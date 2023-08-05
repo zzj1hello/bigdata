@@ -184,7 +184,7 @@ Cloudera公司的CDH提供Hadoop生态圈的技术和版本线
   - 要知道块在哪，作为元数据存在NN
 - Block具有副本(replication)，**没有主从概念**，副本不能出现在同一个节点
 - 副本是满足**可靠性**和**性能**的关键
-  - 不能出现同一个节点，不是单机
+  - 不能出现在同一个节点，不是单机
   - 并行计算
 - 文件上传可以指定block大小和副本数，**上传后只能修改副本数**
 - 一次写入多次读取，**不支持修改**，但支持追加文件数据
@@ -356,7 +356,7 @@ HDFS这两种方式都使用了，日志：EditsLog，记录少时有优势；�
 
 ## 实验
 
-基础设施:
+### 环境配置
 
 GNU/Linux+JAVA1.8+ssh
 
@@ -402,19 +402,133 @@ source /etc/profile # . /etc/profile
 echo $JAVA_HOME # 检查
 
 # ssh 免密设置 （考虑单机还是多机）
-# 机器A的.ssh/authorized_keys文件有了机器B的公钥 A就能免密ssh登录B（满足自己免密登自己）
 # Hadoop官网有  生成秘钥和公钥用于加解密
 ssh localhost  # 验证自己还没有免密，被动会生成 /root/.ssh目录  ll -a 可查看到 进入该目录 有known_hosts文件
 
 ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa # 加密算法 空密码 放的路径，会生成两文件 秘钥和公钥
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys # 把自己的公钥id_rsa.pub文本内容 追加写入	自己或其他机器的authorized_keys文件中
+chmod 0600 ~/.ssh/authorized_keys 
 
-chmod 0600 ~/.ssh/authorized_keys # 3个数字用户 组 其他人 0-7的数字代表：没有权限（无法读取、写入或执行）；执行权限；写入权限；写入和执行权限；读取权限；读取和执行权限；读取和写入权限；读取、写入和执行权限
+# 解压hadoop压缩包
+tar xf hadoop*.tar.gz
+# 移动到/opt/*目录
 
+# 添加环境变量（操作系统的环境变量） 在容易位置可以执行hadoop命令
+vi /etc/profile
+	export HADOOP_HOME=...
+	export PATH=...:HADOOP_HOME/bin:HADOOP_HOME/sbin
+
+source /etc/profile
+
+# 进入hadoop/etc目录 给Hadoop配置JAVA环境和HDFS角色 官网有，
+cd $HADOOP_HOME/etc/hadoop
+vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机器上访问取不到该环境变量 修改为绝对路径
+	export JAVA_HOME=/usr/local/java/jdk1.8.0_351
+
+vi core_site.xml # 设置NameNode 告诉客户端和DN节点 NN在哪 不写localhost，写本机的主机名node01
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://node01:9000</value>
+        </property>
+    </configuration>
+vi hdfs_site.xml 
+    <configuration>
+        <property> # 放置数据块的副本数 伪分布式的value=1 因为副本不能放在同一节点 
+            <name>dfs.replication</name>
+            <value>1</value>
+        </property>
+        <property> # 补充元数据和数据块的放置目录 从而不被OS作为临时文件以删除
+            <name>dfs.namenode.name.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/name</value>
+        </property>
+        <property> # 补充元数据和数据块的放置目录 从而不被OS作为临时文件以删除
+            <name>dfs.datanode.data.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/data</value>
+        </property>
+        <property> # 补充SecondNameNoded与NN的通信地址
+            <name>dfs.namenode.secondary.http-address</name>
+            <value>node01:9868</value>
+        </property>
+        <property> # 补充SecondNameNoded用于与NN合并元数据的目录
+            <name>dfs.namenode.checkpoint.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/namesecondary</value>
+        </property>
+
+    </configuration>
+	 #
+vi slaves # 设置DataNode DN在哪
+	node01
+	
+
+	
 ```
 
-部署配置
+> 免密登陆：
+>
+> - 机器A的.ssh/authorized_keys文件有了机器B的公钥 A就能免密ssh登录B（满足自己免密登自己）
+> - 公钥是由私钥生成的，但是无法从公钥中推导出私钥。**公钥用于加密**从客户端发送到服务器的数据。而**私钥则用于解密这些数据**。这意味着只有持有正确的私钥的用户才能解密通过公钥加密的数据。
+> - 身份验证：在免密登录过程中，你需要将你的公钥提供给需要免密登录的机器，以便在身份验证过程中使用。当你尝试连接到远程机器时，**远程机器会比对你提供的公钥和已经存储在其上的公钥。如果两者匹配，那么你就可以成功进行免密登录。**
+>
+> 权限设置
+>
+> - 3个数字分别表示用户 组 其他人的权限 
+> - 每个数字取0-7，代表：没有权限（无法读取、写入或执行）；执行权限；写入权限；写入和执行权限；读取权限；读取和执行权限；读取和写入权限；读取、写入和执行权限
+>
+> hadoop目录文件
+>
+> - hadoop/sbin目录下存放服务启停的脚本，hadoop/bin目录下存放应用功能命令模块；hadoop/etc存放配置；hadoop/share存放jar包
+>
+> 为什么要在hadoop_env.sh中需要再设置JAVA_HOME
+>
+> - SSH免密登录过程中，不会执行/etc/profile文件，获取系统的JAVA环境变量，而只接受hadoop_env.sh里的环境变量。
+>
+> 额外的HDFS配置，查看[官方xml配置文档](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml)
+>
+> - core-default.xml中默认hadoop.tmp.dir=/tmp/hadoop-${user.name}，在本地存放临时数据的目录
+> - NN将元数据持久化为FI和EL存在本地，DN将数据块存在本地，hdfs-default.xml中默认了NN的存放目录为dfs.namenode.name.dir=file://\${hadoop.tmp.dir}/dfs/name；和DN的存放目录为dfs.datanode.data.dir=file://\${hadoop.tmp.dir}/dfs/data，**即将这些数据作为临时数据存放**
+> - 然而/tmp目录是一个OS可以在磁盘不够下删除的目录，因此存在风险，为了数据的安全可靠，需要再HDFS中修改存放临时数据的目录
+> - 修改时注意命名规则，dfs.namenode.name.dir=某一指定目录/dfs/name
+> - SecondaryNameNode角色的默认通信地址为dfs.namenode.secondary.http-address=0.0.0.0:9868，由主机地址:端口号组成。
+>   - SecondaryNameNode 需要与 本地的NameNode 建立通信，因此需要指定主机地址和端口号来与 NameNode 进行通信。
+> - dfs.namenode.checkpoint.dir=file://${hadoop.tmp.dir}/dfs/namesecondary，SNN存放临时镜像的目录
 
-初始化运行
 
-命令行使用
+
+### HDFS启动
+
+1. Format the filesystem：执行/bin目录下的hdfs程序，`hdfs namenode -format`，成功执行下只需要格式化一次
+
+   - **创建NN的数据存放目录name**
+
+   - 初始化一个空的FI
+
+   - 生成VERSION文件，存放集群ID（CID）
+     - 一个集群有一个NN和多个DN，一个集群的DN无法和另一个集群的NN通信
+
+![image-20230805174321400](assets/image-20230805174321400.png)
+
+2. Start NameNode daemon and DataNode daemon：执行/sbin下的start-dfs.sh程序`start-dfs.sh`，他会调用slave.sh文件，使用 ssh 连接到远程主机 `$slave`
+   - 使用 SSH 并执行 `$@"` 中指定的命令。`$@"` 表示将脚本接收到的所有参数传递给该命令。
+   - `$HADOOP_SSH_OPTS` 是用于 SSH 连接的选项和参数。
+   - `2>&1` 将标准错误输出重定向到标准输出，以便将错误消息传递给 `sed` 命令。
+   - `sed "s/^/$slave: /"` 在输出中添加前缀 `$slave:`，以标识输出来自哪个主机。
+   - `&` 将命令放入后台执行，以便可以同时启动多个从节点。
+
+![image-20230805185253569](assets/image-20230805185253569.png)
+
+3. `start-dfs.sh`会读取HDFS配置文件（hdfs_site.xml，slaves.sh），启动NN，DN，SNN进程
+
+   - 第一次启动会创建SNN的数据存放目录secondary和DN的数据目录data
+   - 生成的data目录下存放DN的VERSION文件，与NN节点数据目录下的VERSION文件，有相同的集群ID，CID
+
+   ![image-20230805195524014](assets/image-20230805195524014.png)
+
+4. `jps`查看到有三个角色进程
+
+5. windows的 C:\Windows\System32\drivers\etc\hosts文件中可添加IP地址和别名，从而在浏览器中访问 http://node01:50070 （50070端口）
+
+   > IP node01
+
+### HDFS使用
+
