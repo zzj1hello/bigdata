@@ -401,10 +401,15 @@ vi /etc/profile
 source /etc/profile # . /etc/profile
 echo $JAVA_HOME # 检查
 
-# ssh 免密设置
+# ssh 免密设置 （考虑单机还是多机）
 # 机器A的.ssh/authorized_keys文件有了机器B的公钥 A就能免密ssh登录B（满足自己免密登自己）
 # Hadoop官网有  生成秘钥和公钥用于加解密
-ssh localhost  # 验证自己还没有免密，被动会生成 /root/.ssh  ll -a 可查看 进入该目录 有known_hosts文件
+ssh localhost  # 验证自己还没有免密，被动会生成 /root/.ssh目录  ll -a 可查看到 进入该目录 有known_hosts文件
+
+ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa # 加密算法 空密码 放的路径，会生成两文件 秘钥和公钥
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys # 把自己的公钥id_rsa.pub文本内容 追加写入	自己或其他机器的authorized_keys文件中
+
+chmod 0600 ~/.ssh/authorized_keys # 3个数字用户 组 其他人 0-7的数字代表：没有权限（无法读取、写入或执行）；执行权限；写入权限；写入和执行权限；读取权限；读取和执行权限；读取和写入权限；读取、写入和执行权限
 
 ```
 
