@@ -364,6 +364,10 @@ GNU/Linux+JAVA1.8+ssh
 - Hadoop Script脚本 + ssh**免密远程执行** ，可以自动化启动集群 `ssh 用户名@ip '脚本命令'`
   - 在该目录下 修改环境变量后，需要`source /ect/profile `或使用其别名 `. /etc/profile`，这样可以在不重新启动终端的情况下，立即加载配置文件中的更改。这样，添加的环境变量将立即在当前的 Shell 环境中生效，而不需要重新启动终端。
   - 远程执行， `ssh 用户名@ip 'echo 环境变量'`失败，无法访问远程机器的环境变量（/etc/profile），这是因为没有加载/etc/profile文件；需要先 `ssh 用户名@ip 'source /ect/profile;echo 环境变量'`
+- Hadoop集群的三种模式
+  - [Local (Standalone) Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Standalone_Operation)：一个JAVA进程，担当三个角色
+  - [Pseudo-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Pseudo-Distributed_Operation)：一个角色启动一个JAVA进程，但在一个节点启动所有角色
+  - [Fully-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Fully-Distributed_Operation)：
 
 ```bash
 #设置网络 IP
@@ -477,7 +481,18 @@ vi slaves # 设置DataNode DN在哪
 >
 > hadoop目录文件
 >
-> - hadoop/sbin目录下存放服务启停的脚本，hadoop/bin目录下存放应用功能命令模块；hadoop/etc存放配置；hadoop/share存放jar包
+> - hadoop/sbin目录下存放服务启停的脚本(start-all.sh)，hadoop/bin目录下存放应用功能命令模块(hadoop hdfs yarn)；hadoop/etc存放配置；hadoop/share存放jar包
+>
+> <table>
+>   <tr>
+>     <td>
+>       <img src="assets/image-20230806093712768.png" alt="Image 1">
+>     </td>
+>     <td>
+>       <img src="assets/image-20230806094353382.png" alt="Image 2">
+>     </td>
+>   </tr>
+> </table>
 >
 > 为什么要在hadoop_env.sh中需要再设置JAVA_HOME
 >
@@ -531,4 +546,45 @@ vi slaves # 设置DataNode DN在哪
    > IP node01
 
 ### HDFS使用
+
+hdfs dfs + <-命令>，在HDFS中创建用户数据文件，而不是本地机器的文件系统中，和各角色的数据存放目录存在本地不同
+
+1. 在NN数据目录中创建目录：`hdfs dfs -mkdir 目录`，如`hdfs dfs -mkdir -p usr/root`，创建home目录（多级目录 -p）
+
+2. 上传文件：`hdfs dfs -put 文件 目录`，可以看到文件以块大小被划分到DN（默认放到home目录下）
+
+   <img src="assets/image-20230806101458721.png" alt="image-20230806101458721" style="zoom:50%;" />
+
+<img src="assets/image-20230806101620534.png" alt="image-20230806101620534" style="zoom:50%;" />
+
+3. 在本地的DN数据存放目录下可查看到对应的数据块和数据库检验信息（.meta）
+
+   ![image-20230806101942120](assets/image-20230806101942120.png)
+
+4. 验证块的线性切割
+
+   1. 输入bash脚本命令，生成一个文件
+
+      ```bash
+      for i in `seq 100000`;do echo "hello hadoop $i" >> data.txt ;done'
+      ```
+
+   2. `ll -l -h`可查看到该文件的大小为1.9M（**-h**uman 表示人可读的文件大小）
+
+   3. `hdfs dfs -D dfs.blocksize=1048576 -put data.txt`，-D指定属性=值，属性来自配置信息，将data.txt以1M=1024*1024=1048576bit的大小进行数据块分割
+
+   4. 去data目录查看两个数据块文件的结尾和开头，发现就是直接切割的
+
+      <table style="display: flex; justify-content: center;">
+        <tr>
+          <td>
+            <img src="assets/image-20230806111142016.png" alt="Image 1">
+          </td>
+          <td>
+            <img src="assets/image-20230806111127953.png" alt="Image 2">
+          </td>
+        </tr>
+      </table>
+
+
 
