@@ -181,7 +181,7 @@ Cloudera公司的CDH提供Hadoop生态圈的技术和版本线
 - block的大小依据硬件的I/O特性调整，不同应用框架默认值不同
   - 机械硬盘 500M/s
 - **block被分散存放在集群的节点中，具有location**
-  - 要知道块在哪，作为元数据存在NN
+  - 要知道块在哪，作为元数据存在于NN
 - Block具有副本(replication)，**没有主从概念**，副本不能出现在同一个节点
 - 副本是满足**可靠性**和**性能**的关键
   - 不能出现在同一个节点，不是单机
@@ -221,7 +221,7 @@ Cloudera公司的CDH提供Hadoop生态圈的技术和版本线
 NameNode（NN）
 
 - 完全**基于内存存储**文件元数据、目录结构、文件block的映射
-  - 内存访问速度快，更快速对外客户端提供服务
+  - 内存访问速度快，更快速对外客户端提供服务（内存中元数据通常以树或哈希表的形式组织）
   - 但内存数据易失，且大小有限。故需要**持久化方案**保证数据的可靠性
     - Redis、HBase、ElasticSearch都是有限把数据放到内存，选择的持久化方案都不太一样
 - 需要**持久化方案**保证数据可靠性
@@ -229,7 +229,7 @@ NameNode（NN）
 
 DataNode（DN）
 
-- 基于本地磁盘存储block(**文件的形式**，物理形式)
+- 基于**本地磁盘存储**block(**文件的形式**，物理形式)
 - 还保存了block的**校验和数据**保证block的可靠性
 - 与NameNode保持心跳，汇报block列表状态
 
@@ -307,9 +307,11 @@ HDFS这两种方式都使用了，日志：EditsLog，记录少时有优势；�
 
 最重要
 
+读写都需要访问NN上的元数据
+
 写流程：
 
-- Client和NN连接创建文件元数据
+- Client和NN连接，创建文件元数据
 - NN判定元数据是否有效
   - 元数据是否有效，比如路径下已有该文件，是否有权限修改文件等
 - **NN触发副本放置策略，返回一个有序的DN列表**
@@ -356,7 +358,7 @@ HDFS这两种方式都使用了，日志：EditsLog，记录少时有优势；�
 
 ## 实验
 
-### 环境配置
+### 基础环境配置
 
 GNU/Linux+JAVA1.8+ssh
 
@@ -364,10 +366,6 @@ GNU/Linux+JAVA1.8+ssh
 - Hadoop Script脚本 + ssh**免密远程执行** ，可以自动化启动集群 `ssh 用户名@ip '脚本命令'`
   - 在该目录下 修改环境变量后，需要`source /ect/profile `或使用其别名 `. /etc/profile`，这样可以在不重新启动终端的情况下，立即加载配置文件中的更改。这样，添加的环境变量将立即在当前的 Shell 环境中生效，而不需要重新启动终端。
   - 远程执行， `ssh 用户名@ip 'echo 环境变量'`失败，无法访问远程机器的环境变量（/etc/profile），这是因为没有加载/etc/profile文件；需要先 `ssh 用户名@ip 'source /ect/profile;echo 环境变量'`
-- Hadoop集群的三种模式
-  - [Local (Standalone) Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Standalone_Operation)：一个JAVA进程，担当三个角色
-  - [Pseudo-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Pseudo-Distributed_Operation)：一个角色启动一个JAVA进程，但在一个节点启动所有角色
-  - [Fully-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Fully-Distributed_Operation)：
 
 ```bash
 #设置网络 IP
@@ -428,44 +426,6 @@ source /etc/profile
 cd $HADOOP_HOME/etc/hadoop
 vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机器上访问取不到该环境变量 修改为绝对路径
 	export JAVA_HOME=/usr/local/java/jdk1.8.0_351
-
-vi core_site.xml # 设置NameNode 告诉客户端和DN节点 NN在哪 不写localhost，写本机的主机名node01
-    <configuration>
-        <property>
-            <name>fs.defaultFS</name>
-            <value>hdfs://node01:9000</value>
-        </property>
-    </configuration>
-vi hdfs_site.xml 
-    <configuration>
-        <property> # 放置数据块的副本数 伪分布式的value=1 因为副本不能放在同一节点 
-            <name>dfs.replication</name>
-            <value>1</value>
-        </property>
-        <property> # 补充元数据和数据块的放置目录 从而不被OS作为临时文件以删除
-            <name>dfs.namenode.name.dir</name>
-            <value>/var/bigdata/hadoop/local/dfs/name</value>
-        </property>
-        <property> # 补充元数据和数据块的放置目录 从而不被OS作为临时文件以删除
-            <name>dfs.datanode.data.dir</name>
-            <value>/var/bigdata/hadoop/local/dfs/data</value>
-        </property>
-        <property> # 补充SecondNameNoded与NN的通信地址
-            <name>dfs.namenode.secondary.http-address</name>
-            <value>node01:9868</value>
-        </property>
-        <property> # 补充SecondNameNoded用于与NN合并元数据的目录
-            <name>dfs.namenode.checkpoint.dir</name>
-            <value>/var/bigdata/hadoop/local/dfs/namesecondary</value>
-        </property>
-
-    </configuration>
-	 #
-vi slaves # 设置DataNode DN在哪
-	node01
-	
-
-	
 ```
 
 > 免密登陆：
@@ -498,15 +458,65 @@ vi slaves # 设置DataNode DN在哪
 >
 > - SSH免密登录过程中，不会执行/etc/profile文件，获取系统的JAVA环境变量，而只接受hadoop_env.sh里的环境变量。
 >
-> 额外的HDFS配置，查看[官方xml配置文档](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml)
+
+
+
+### 伪分布式配置
+
+Hadoop的部署配置：Hadoop集群的三种模式，不同模式的配置不同
+
+- [Local (Standalone) Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Standalone_Operation)：一个JAVA进程，担当三个角色
+- [Pseudo-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Pseudo-Distributed_Operation)：一个角色启动一个JAVA进程，但在一个节点启动所有角色
+- [Fully-Distributed Mode](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/SingleCluster.html#Fully-Distributed_Operation)：
+
+以伪分布式的配置为例，在$HADOOP_HOME/etc/hadoop目录下修改以下配置文件
+
+```bash
+vi core_site.xml # 设置NameNode 告诉客户端和DN节点 NN在哪 不写localhost，写本机的主机名node01
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://node01:9000</value>
+        </property>
+    </configuration>
+vi hdfs_site.xml 
+    <configuration>
+        <property> # 放置数据块的副本数 伪分布式的value=1 因为副本不能放在同一节点 
+            <name>dfs.replication</name>
+            <value>1</value>
+        </property>
+        <property> # 补充元数据和数据块放置目录（为了持久化） 从而不被OS作为临时文件以删除
+            <name>dfs.namenode.name.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/name</value>
+        </property>
+        <property> # 补充元数据和数据块的放置目录 从而不被OS作为临时文件以删除
+            <name>dfs.datanode.data.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/data</value>
+        </property>
+        <property> # 补充SecondNameNoded与NN的通信地址
+            <name>dfs.namenode.secondary.http-address</name>
+            <value>node01:9868</value>
+        </property>
+        <property> # 补充SecondNameNoded用于与NN合并元数据的目录
+            <name>dfs.namenode.checkpoint.dir</name>
+            <value>/var/bigdata/hadoop/local/dfs/namesecondary</value>
+        </property>
+
+    </configuration>
+
+vi slaves # 设置DataNode DN在哪
+	node01
+```
+
+>额外的HDFS配置，查看[官方xml配置文档](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml)
 >
-> - core-default.xml中默认hadoop.tmp.dir=/tmp/hadoop-${user.name}，在本地存放临时数据的目录
-> - NN将元数据持久化为FI和EL存在本地，DN将数据块存在本地，hdfs-default.xml中默认了NN的存放目录为dfs.namenode.name.dir=file://\${hadoop.tmp.dir}/dfs/name；和DN的存放目录为dfs.datanode.data.dir=file://\${hadoop.tmp.dir}/dfs/data，**即将这些数据作为临时数据存放**
-> - 然而/tmp目录是一个OS可以在磁盘不够下删除的目录，因此存在风险，为了数据的安全可靠，需要再HDFS中修改存放临时数据的目录
-> - 修改时注意命名规则，dfs.namenode.name.dir=某一指定目录/dfs/name
-> - SecondaryNameNode角色的默认通信地址为dfs.namenode.secondary.http-address=0.0.0.0:9868，由主机地址:端口号组成。
->   - SecondaryNameNode 需要与 本地的NameNode 建立通信，因此需要指定主机地址和端口号来与 NameNode 进行通信。
-> - dfs.namenode.checkpoint.dir=file://${hadoop.tmp.dir}/dfs/namesecondary，SNN存放临时镜像的目录
+>- core-default.xml中默认hadoop.tmp.dir=/tmp/hadoop-${user.name}，在本地存放临时数据的目录
+>- NN将元数据持久化为FI和EL存在本地，DN将数据块存在本地，hdfs-default.xml中默认了NN的存放目录为dfs.namenode.name.dir=file://\${hadoop.tmp.dir}/dfs/name；和DN的存放目录为dfs.datanode.data.dir=file://\${hadoop.tmp.dir}/dfs/data，**即将这些数据作为临时数据存放**
+>- 然而/tmp目录是一个OS可以在磁盘不够下删除的目录，因此存在风险，为了数据的安全可靠，需要再HDFS中修改存放临时数据的目录
+>- 修改时注意命名规则，dfs.namenode.name.dir=某一指定目录/dfs/name
+>- SecondaryNameNode角色的默认通信地址为dfs.namenode.secondary.http-address=0.0.0.0:9868，由主机地址:端口号组成。
+>  - SecondaryNameNode 需要与 本地的NameNode 建立通信，因此需要指定主机地址和端口号来与 NameNode 进行通信。
+>- dfs.namenode.checkpoint.dir=file://${hadoop.tmp.dir}/dfs/namesecondary，SNN存放临时镜像的目录
 
 
 
@@ -539,7 +549,7 @@ vi slaves # 设置DataNode DN在哪
 
    ![image-20230805195524014](assets/image-20230805195524014.png)
 
-4. `jps`查看到有三个角色进程
+4. `jps`查看到有三个角色的JAVA进程
 
 5. windows的 C:\Windows\System32\drivers\etc\hosts文件中可添加IP地址和别名，从而在浏览器中访问 http://node01:50070 （50070端口）
 
@@ -587,4 +597,109 @@ hdfs dfs + <-命令>，在HDFS中创建用户数据文件，而不是本地机�
       </table>
 
 
+
+### 完全分布式配置
+
+在伪分布式的基础上，在配置文件中规划角色放在哪些节点上，这里将按照以下规划
+
+![image-20230806144335206](assets/image-20230806144335206.png)
+
+1. 配置相同的基础环境（JAVA HADOOP），稍有不同的是
+
+   - 保证各个几点的/etc/hosts文件存放其他节点，保证能互相通信
+
+   - 设置SSH免密（HA高可用环境下，公钥的分发与角色相关，现在默认谁执行 start-all.sh，谁把公钥分发给其他节点）
+     - node01向node02分发公钥，`scp ./ssh/id_rsa.pub node02:/home/.ssh/node01.pub`
+       - node02追加公钥到authorized_keys，`cat node01.pub >> authorized_keys  `
+       - 其他机器同理，就可以完成node01免密登录其他机器
+
+2. 在 $HADOOP_HOME/etc/hadoop中配置 在哪启动角色，角色数据的保存地址
+
+   - 可以将伪分布式的配置做个拷贝，`cp hadoop hadoop-local`，运行start-all.sh执行程序，将默认进入/etc/hadoop目录下读取配置，可以只是做个备份
+
+   - 不修改本机的core-site.xml，规定NN在本机上启动
+
+   - 修改hdfs_site.xml，配置DN和SNN
+
+     -  SecondNameNoded放在node02节点
+
+     ```xml
+     <configuration>
+         <property> 
+             <name>dfs.replication</name>
+             <value>2</value>
+         </property>
+         <property> 
+             <name>dfs.namenode.name.dir</name>
+             <value>/var/bigdata/hadoop/full/dfs/name</value>
+         </property>
+         <property> 
+             <name>dfs.datanode.data.dir</name>
+             <value>/var/bigdata/hadoop/full/dfs/data</value>
+         </property>
+         <property>
+             <name>dfs.namenode.secondary.http-address</name>
+             <value>node02:9868</value>
+         </property>
+         <property> 
+             <name>dfs.namenode.checkpoint.dir</name>
+             <value>/var/bigdata/hadoop/full/dfs/namesecondary</value>
+         </property>
+     </configuration>
+     ```
+
+3. 修改slaves，修改DN在哪启动
+   - 按 shfit zz等价于wq
+
+```bash
+vi slaves
+	node02
+	node23
+	node04
+```
+
+ 4. 分发？，为什么要分发本地之前创建的 bigdata目录
+
+ 5. 格式化启动
+
+    `hdfs namenode -format`
+
+    `start-all.sh`
+
+    将会在各个节点创建角色和数据保存目录
+
+## HA高可用
+
+只有一个NN，存在两个独立的问题
+
+- 单点故障，集群不可用
+- 压力过大，内存受限（都要和同一台NN节点通信，元数据存在内存，用于快速访问）
+
+需要采用两种独立的解决方案，分别为
+
+- 高可用方案（HA，High Available），多个NN，主备切换
+  - 其中HADOOP2.X 上线较为仓促，只支持HA的一主一备
+- 联邦机制（Federation），将元数据分片；多个NN管理不同的元数据
+
+NN的元数据来自客户端的增删改写入操作和DN提交的数据块信息，后者会在写入NN时，同步写入到备用NN；而来自客户端的写入，只与NN通信（这是为了快速响应，减少通信浪费）需要保证备用NN一致性，否则NN挂了，还没把客户端来的操作写给备用NN
+
+- 分布式场景下的一致性会破坏可用性（通信模型的同步阻塞），要等延迟时间，备用节点写好
+
+- 分布式场景下的可用性会破坏一致性（通信模型的异步非阻塞），不知道给备用节点写好了没有
+
+- 即存在CAP原则，全满足不可能
+
+  <img src="assets/image-20230806204948400.png" alt="image-20230806204948400" style="zoom:50%;" />
+
+JN（journal ）：为了在分布式场景下尽可能的保证一致性和可用性，需要再NN和备用NN间构建中间件（而且是多个），其保证可靠存储，且是异步执行
+
+- 保证可靠：中间件是一个主从集群，NN与主通信，主将信息写入从
+  - 主挂了，在从无主状态选出主
+- 保证可用：有一半从节点返回写入成功，
+
+
+
+<img src="assets/image-20230806163422616.png" alt="image-20230806163422616" style="zoom:67%;" />
+
+## 联邦机制
 
