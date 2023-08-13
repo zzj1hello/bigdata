@@ -605,7 +605,7 @@ hdfs dfs + <-命令>，在HDFS中创建用户数据文件，而不是本地机�
 
 ![image-20230806144335206](assets/image-20230806144335206.png)
 
-1. 配置相同的基础环境（JAVA HADOOP），稍有不同的是
+1. 配置相同的基础环境（JAVA HADOOP，可以通过scp直接-r 分发/opt/bigdata/..），稍有不同的是
 
    - 保证各个几点的/etc/hosts文件存放其他节点，保证能互相通信
 
@@ -768,7 +768,8 @@ HA方案总结：
    - 保证start-hdfs.sh的机器，把公钥发给其他机器，能够免密启动DN
    - 额外需要将ZKFC进程能够免密查看和控制本机的NN和其他机器上的NN，即**有NN的机器需要互发公钥**
 2. 应用配置
-   - HA需要ZooKeeper集群，修改HADOOP配置，与集群同步
+   - HA需要额外ZooKeeper集群，并
+   - 修改HADOOP配置，与集群同步
 3. 初始化启动（1-5是搭建时做的，后续只需要做6启动 start 停止stop）
    1. 先启动JN  `hadoop-daemon.sh start journalnode`
    2. 选择一个NN做主，进行格式化 `hdfs namenode -format`
@@ -780,15 +781,75 @@ HA方案总结：
 ### 应用配置
 
 ```bash
+# 在node02中配置信息
 tar xf zookeeper*.tar.gz /opt/bigdata
-vi /conf/zk.conf
+
+# 添加环境变量
+vi /etc/profile
+	export ZOOKEEPER_HOME=/opt/bigdata/zookeeper*
+	export PATH=$PATH:ZOOKEEPER_HOME/bin # 加上
+. /etc/profile
+
+cd /opt/bigdata/zookeeper*/conf
+cp zoo_sample.cfg zk.cfg
+vi zk.cfg
 	 dataDir=/tmp/zookeeper  修改为 dataDir=/var/bigdata/hadoop/zk
-	 # 配置ZooKeeper的节点权重，
+	 # 配置ZooKeeper集群节点 
 	 server.1=node02:2888:3888
 	 server.2=node03:2888:3888
 	 server.3=node04:2888:3888
+cd /var/bigdata/hadoop
+mkdir /zk
+echo 1 > /zk/myid
+
+# 分发到node03 node04中
+cd /var/bigdata/
+scp -r ./zookeeper- node03:`pwd`
+scp -r ./zookeeper- node04:`pwd`
+
+# 同样加入ZOOKEEPER_HOME 并在其他机器上不上权重文件
+mkdir /var/bigdata/hadoop/zk
+echo 2 > /var/bigdata/hadoop/zk/myid
+
+mkdir /var/bigdata/hadoop/zk
+echo 3 > /var/bigdata/hadoop/zk/myid
+
+# 启动zookeeper
+zkServer.sh start
+
+# 修改HADOOP配置
+
 ```
 
-- zookeeper的/bin目录下有 zkServer.sh,zkCli.sh；/conf目录下有zk.conf，文件中写了在内存中存数据的临时目录 
+- zookeeper的/bin目录下有 zkServer.sh,zkCli.sh；/conf目录下有zoo_sample.cfg，文件中写了在内存中存数据的临时目录，需要将其修改为可靠目录，并添加服务器节点的配置信息
+
+  - `server.<ID>=<hostname>:<peerPort>:<leaderPort>`
+
+  - 指定了ZooKeeper集群中的每个不同服务器节点的信息，包括它们的地址和用于通信和选举的两个端口
+
+    给定至少三个ZK节点，存在至少两台能够相互通信，则可以选举出主NN（Leader节点），其他作为备用NN
+
+  - ZooKeeper的选举算法会考虑节点的可用性和通信延迟等因素，以选择合适的Leader节点。通常情况下，ZooKeeper会选择具有最高可用性和最低延迟的节点作为Leader节点。
+
+    - 在每天zookeeper节点机器的数据存放目录/var/bigdata/hadoop/zk中创建文件 myid，写入该节点的权重值
+
+
+zookeeper leader选举
+
+- 首先在node02启动zookeeper，查看节点状态zkServer.sh status和java进程，此时整个Zookeeper集群只有一个zk进程，但zk配置文件存着三个节点，当前节点无法与其他节点连接到，因此停止了服务“Error contacting service”
+
+  ![image-20230813170102511](assets/image-20230813170102511.png)
+
+- 在node03中启动zk，node03的节点状态为leader，node02上的节点状态处于follower（因为node03上的节点权重较大，三台节点，有两台能通信，可以选举出leader，建立可用状态）
+
+  ![image-20230813170347978](assets/image-20230813170347978.png)
+
+  ![image-20230813170324462](assets/image-20230813170324462.png)
+
+- 在node04中启动zk，node04节点状态和node02一样为follower，node03为leader（即便node04的节点权重更大，但只要集群有leader处于可用状态，新启动的节点都直接作为follower，没必要再选举切换主从，导致不稳定）
+
+  ![image-20230813170521945](assets/image-20230813170521945.png)
 
 mycluster字符串，定义目录，用来隔离不同机器上的相同操作
+
+- 
