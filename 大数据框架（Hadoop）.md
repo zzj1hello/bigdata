@@ -366,6 +366,7 @@ GNU/Linux+JAVA1.8+ssh
 - Hadoop Script脚本 + ssh**免密远程执行** ，可以自动化启动集群 `ssh 用户名@ip '脚本命令'`
   - 在该目录下 修改环境变量后，需要`source /ect/profile `或使用其别名 `. /etc/profile`，这样可以在不重新启动终端的情况下，立即加载配置文件中的更改。这样，添加的环境变量将立即在当前的 Shell 环境中生效，而不需要重新启动终端。
   - 远程执行， `ssh 用户名@ip 'echo 环境变量'`失败，无法访问远程机器的环境变量（/etc/profile），这是因为没有加载/etc/profile文件；需要先 `ssh 用户名@ip 'source /ect/profile;echo 环境变量'`
+- linux的第三方软件一般放/opt目录，数据存放在/var目录下
 
 ```bash
 #设置网络 IP
@@ -441,7 +442,7 @@ vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机
 >
 > hadoop目录文件
 >
-> - hadoop/sbin目录下存放服务启停的脚本(start-all.sh)，hadoop/bin目录下存放应用功能命令模块(hadoop hdfs yarn)；hadoop/etc存放配置；hadoop/share存放jar包
+> - hadoop/sbin目录下存放HDFS服务和其他服务启停的脚本(start-dfs.sh、start-yarn.sh)，hadoop/bin目录下存放应用功能命令模块(hadoop hdfs yarn)；hadoop/etc存放配置；hadoop/share存放jar包
 >
 > <table>
 >   <tr>
@@ -608,14 +609,15 @@ hdfs dfs + <-命令>，在HDFS中创建用户数据文件，而不是本地机�
 
    - 保证各个几点的/etc/hosts文件存放其他节点，保证能互相通信
 
-   - 设置SSH免密（HA高可用环境下，公钥的分发与角色相关，现在默认谁执行 start-all.sh，谁把公钥分发给其他节点）
+   - 设置SSH免密（HA高可用环境下，公钥的分发与角色相关，现在默认谁执行 start-dfs.sh，谁把公钥分发给其他节点）
      - node01向node02分发公钥，`scp ./ssh/id_rsa.pub node02:/home/.ssh/node01.pub`
        - node02追加公钥到authorized_keys，`cat node01.pub >> authorized_keys  `
        - 其他机器同理，就可以完成node01免密登录其他机器
+       - 使用scp时，若路径相同可以简写为 scp id_rsa.pub node02:\`pwd\`/node01.pub
 
 2. 在 $HADOOP_HOME/etc/hadoop中配置 在哪启动角色，角色数据的保存地址
 
-   - 可以将伪分布式的配置做个拷贝，`cp hadoop hadoop-local`，运行start-all.sh执行程序，将默认进入/etc/hadoop目录下读取配置，可以只是做个备份
+   - 可以将伪分布式的配置做个拷贝，`cp hadoop hadoop-local`，运行start-dfs.sh执行程序，将默认进入/etc/hadoop目录下读取配置，可以只是做个备份
 
    - 不修改本机的core-site.xml，规定NN在本机上启动
 
@@ -664,7 +666,7 @@ vi slaves
 
     `hdfs namenode -format`
 
-    `start-all.sh`
+    `start-dfs.sh`
 
     将会在各个节点创建角色和数据保存目录
 
@@ -678,10 +680,14 @@ vi slaves
 需要采用两种独立的解决方案，分别为
 
 - 高可用方案（HA，High Available），多个NN，主备切换
-  - 其中HADOOP2.X 上线较为仓促，只支持HA的一主一备
+  - 其中HADOOP2.X 上线较为仓促，只支持HA的一主一备；HADOOP3.X支持一主多备（最多五个）
 - 联邦机制（Federation），将元数据分片；多个NN管理不同的元数据
 
-NN的元数据来自客户端的增删改写入操作和DN提交的数据块信息，后者会在写入NN时，同步写入到备用NN；而来自客户端的写入，只与NN通信（这是为了快速响应，减少通信浪费）需要保证备用NN一致性，否则NN挂了，还没把客户端来的操作写给备用NN
+### HA方案
+
+备用NN不对外提供服务
+
+NN的元数据来自客户端的增删改写入操作和DN提交的数据块信息，**后者会在写入NN时，同步写入到备用NN；而来自客户端的写入，只与NN通信（这是为了简化客户端的操作和管理，快速响应，减少通信浪费）**，因此需要保证备用NN一致性，否则NN挂了，还没把客户端来的操作写给备用NN
 
 - 分布式场景下的一致性会破坏可用性（通信模型的同步阻塞），要等延迟时间，备用节点写好
 
@@ -691,15 +697,98 @@ NN的元数据来自客户端的增删改写入操作和DN提交的数据块信�
 
   <img src="assets/image-20230806204948400.png" alt="image-20230806204948400" style="zoom:50%;" />
 
-JN（journal ）：为了在分布式场景下尽可能的保证一致性和可用性，需要再NN和备用NN间构建中间件（而且是多个），其保证可靠存储，且是异步执行
+JN（Journal Node）：为了在分布式场景下尽可能的保证一致性和可用性，需要在NN和备用NN间构建中间件（而且是多个，三个以上，保证过半同步），其保证**可靠存储**，且是异步执行（实现分布式存储，一定能给主备NN快速返回正确的数据，实现数据同步）
 
-- 保证可靠：中间件是一个主从集群，NN与主通信，主将信息写入从
-  - 主挂了，在从无主状态选出主
-- 保证可用：有一半从节点返回写入成功，
+- 主的选举：明确节点数量和权重，选出权重最高的作为主；主挂了，会自动从无主状态选出主
+  - 权重分配方式，有两种：
+    - 1、看手工权重；
+    - 2、看数字ID：每次写入会有一半有最新的ID，数据ID相同看随机ID：取主机里头的某个信息（IP）生成一个值，保证不重复和冲突
+- 主的职能：增删改查，NN与主直接通信，主将信息同步给从
+- 从的职能：查询，增删改传递给主。一半的从返回写入成功则返回给主
+- 主与从：**过半数同步数据**，从而中和一致性和可用性
 
+- 保证可靠：中间件是一个**主从集群**，保证一定有主与NN进行过半同步（内部一致）；备用NN只要能连接上就可以与JN的一致性写入进行同步
+- 保证可用：有一半从节点返回写入成功
 
+NN的主备切换：以上使用JN能实现HA（可用和一致），当主NN挂掉，需要手动将备用NN升级为active的主NN，即还需要手工确定谁是主NN，谁是备用NN，该切换方式效率明显很低，需要自动化的选主NN
+
+- ZooKeeper FailoverController进程（ZKFC，故障转移），与NN进程在同一个物理机上（不需要网络监控，非常可靠），并与分布式协调服务ZooKeeper集群连接
+  - 初始化：在HDFS HA架构启动时，FailoverController进程会连接到ZooKeeper集群，以建立与ZooKeeper的通信通道。
+  - 注册：FailoverController会在ZooKeeper上创建一个**临时的、有序的节点**，表示当前FailoverController的存在。这样可以在ZooKeeper上形成一个FailoverController的有序列表。**临时节点申请的锁是临时锁，一旦临时节点挂掉，会直接触发临时锁的删除事件**
+  - 心跳：FailoverController定期向ZooKeeper发送心跳信号，以表明它的存活状态。这样ZooKeeper可以检测到FailoverController是否正常运行。
+  - 监视：其他FailoverController进程也会在ZooKeeper上创建相同类型的临时节点。这些进程会监视ZooKeeper上的节点列表，以侦听主节点状态的变化。
+- ZKFC进程执行三件任务
+  - 健康检查：实时监控主/备NN是否active
+  - 抢锁：连接ZooKeeper集群，ZKFC要向ZooKeeper创建一个锁，表示创建一个ZooKeeper的子目录，只有一个ZKFC能创建成功，谁创建成功，谁主机下的NN是主，其他是备用NN；并且申请到的锁，会注册一个回调函数
+  - 主备切换：ZKFC得知本机的NN挂了，将抢来的锁删除（也可能锁到期），触发ZooKeeper中锁的删除事件，调用申请时的回调函数，其他的ZKFC会开始新一轮的抢锁（使用回调函数，保证实时响应主备切换，而不是间隔抢锁，存在等待），抢到锁的ZKFC，会查看原来机器上的NN是不是真的挂掉了，对方真的挂了，才把本地的NN升为Active（或对方没挂，直接锁到期，将对方的NN降为Standby）
+    - 选举：如果多个FailoverController同时检测到主节点失效，它们会基于ZooKeeper上节点的有序列表来进行选举，以决定新的主节点。
+- 除了自己本机进程通信，其他通信都需要网络连接，因此存在不可靠性
+  - 当NN Active和ZKFC的机器无法与外界通信，只能等到锁的到期，但抢到锁的ZKFC也无法与那台机器连接到，查看其是否挂掉，因此出现问题（bug，但很少发生）
+  - 使用串口线将每台NN主机进行连接，能连到电源线，能直接将发生故障的Active NN的主机断电，再放心的将备用的NN升级为Active
 
 <img src="assets/image-20230806163422616.png" alt="image-20230806163422616" style="zoom:67%;" />
 
-## 联邦机制
+HA方案总结：
 
+- 多台NN主备模式，Active和Standby状态
+  - Active对外提供服务
+- 增加journalnode角色（>3台），负责同步NN的EditLog，实现最终一致性
+- 增加ZKFC角色(与NN同台)，通过ZooKeeper集群协调NN的主从选举和切换
+  - 事件回调机制，提升切换效率
+- DN同时向所有NN汇报block清单，能保证一致性
+- HA模式下没有SNN，备用NN不对外提供服务，能代替SNN周期性地利用同步过来的EL滚动生成FsImage，实时发给NN，加快NN的下一次启动
+
+### 联邦机制
+
+企业用的没那么多，元数据没那么大
+
+解决NN的压力过大，内存受限问题；名字取自美国州的联邦制
+
+<img src="assets/image-20230812215829663.png" alt="image-20230812215829663" style="zoom:50%;" />
+
+- 元数据分治：将元数据存在不同的NN中，并复用同一个DN存储，存储在不同的**DN目录**中隔离不同block
+
+  - 解决元数据过大，内存压力大的问题
+
+- 元数据访问隔离性：客户端连接一个NN，只能访问对应元数据规定的数据块
+
+  - 会产生一定的用户访问体验度下降（就像看到所有的数据）
+
+  - 可通过一个虚拟文件系统，同时拥有不同的NN元数据，能访问所有数据；同理可升级成一个文件存储平台，可代理不同的文件存储（HDFS、FTP），只需提供相应的接口即可
+
+    <img src="assets/image-20230812220848405.png" alt="image-20230812220848405" style="zoom:50%;" />
+
+## 配置HA实验
+
+![image-20230812223510573](assets/image-20230812223510573.png)
+
+【注】：HDFS HA有两种技术实现，一个是上面说的JN实现，一种是Linux自带的NFS技术（Network for System），后面这种将两台机器的目录都挂载到远程单点机器的目录中，实现一致性和可用；配置HA前，保证没有HDFS进程在运行，否则需要在执行start-hdfs.sh的机器上执行stop-dfs.sh停止服务
+
+1. 基础设施配置，主要需要进一步更改SSH免密
+   - 保证start-hdfs.sh的机器，把公钥发给其他机器，能够免密启动DN
+   - 额外需要将ZKFC进程能够免密查看和控制本机的NN和其他机器上的NN，即**有NN的机器需要互发公钥**
+2. 应用配置
+   - HA需要ZooKeeper集群，修改HADOOP配置，与集群同步
+3. 初始化启动（1-5是搭建时做的，后续只需要做6启动 start 停止stop）
+   1. 先启动JN  `hadoop-daemon.sh start journalnode`
+   2. 选择一个NN做主，进行格式化 `hdfs namenode -format`
+   3. 启动这个NN，以备其他NN同步元数据 `hadoop-daemon.sh start namenode`
+   4. 在另外一台机器上，同步与主NN的元数据 `hdfs namenode -bootstrapStandby`
+   5. 格式化ZooKeeper自动切换主备`hdfs zkfc -formatZK`
+   6. 启动集群 `start-dfs.sh` 
+
+### 应用配置
+
+```bash
+tar xf zookeeper*.tar.gz /opt/bigdata
+vi /conf/zk.conf
+	 dataDir=/tmp/zookeeper  修改为 dataDir=/var/bigdata/hadoop/zk
+	 # 配置ZooKeeper的节点权重，
+	 server.1=node02:2888:3888
+	 server.2=node03:2888:3888
+	 server.3=node04:2888:3888
+```
+
+- zookeeper的/bin目录下有 zkServer.sh,zkCli.sh；/conf目录下有zk.conf，文件中写了在内存中存数据的临时目录 
+
+mycluster字符串，定义目录，用来隔离不同机器上的相同操作
