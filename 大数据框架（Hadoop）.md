@@ -768,7 +768,7 @@ HA方案总结：
    - 保证start-hdfs.sh的机器，把公钥发给其他机器，能够免密启动DN
    - 额外需要将ZKFC进程能够免密查看和控制本机的NN和其他机器上的NN，即**有NN的机器需要互发公钥**
 2. 应用配置
-   - HA需要额外ZooKeeper集群，并
+   - HA需要额外ZooKeeper集群
    - 修改HADOOP配置，与集群同步
 3. 初始化启动（1-5是搭建时做的，后续只需要做6启动 start 停止stop）
    1. 先启动JN  `hadoop-daemon.sh start journalnode`
@@ -818,7 +818,104 @@ echo 3 > /var/bigdata/hadoop/zk/myid
 zkServer.sh start
 
 # 修改HADOOP配置
+cd $HADOOP_HOME
+cd etc 
+## core_site.xml配置
+cd hadoop
+vi core_site.xml 
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name> # 将物理主机名改为hdfs中指定的集群逻辑地址mycluster（会自动解析成主机）
+            <value>hdfs://mycluster</value>
+        </property>
+        
+        <property> # 指定ZKFC访问的ZooKeeper集群地址  ,隔开
+            <name>ha.zookeeper.quorum</name>
+            <value>node02:2181,node03:2181,node04:2181</value>
+        </property>
+    </configuration>
+## hdfs_site.xml配置
+vi hdfs_site.xml
+    <configuration>
+        <property> 
+            <name>dfs.replication</name>
+            <value>2</value>
+        </property>
+        <property> 
+            <name>dfs.namenode.name.dir</name>
+            <value>/var/bigdata/hadoop/ha/dfs/name</value>
+        </property>
+        <property> 
+            <name>dfs.datanode.data.dir</name>
+            <value>/var/bigdata/hadoop/ha/dfs/data</value>
+        </property>
+        
+        # 配置逻辑地址mycluster到不同NN物理地址一对多的映射   
+        <property>
+          <name>dfs.nameservices</name>
+          <value>mycluster</value>
+		</property>
+        <property>
+          <name>dfs.ha.namenodes.mycluster</name>
+          <value>nn1,nn2</value>
+        </property>
 
+        <property>
+          <name>dfs.namenode.rpc-address.mycluster.nn1</name>
+          <value>node01:8020</value>
+        </property>
+        <property>
+          <name>dfs.namenode.rpc-address.mycluster.nn2</name>
+          <value>node02.com:8020</value>
+        </property>
+
+        <property>
+          <name>dfs.namenode.http-address.mycluster.nn1</name>
+          <value>node01:9870</value>
+        </property>
+        <property>
+          <name>dfs.namenode.http-address.mycluster.nn2</name>
+          <value>node02:9870</value>
+        </property>
+
+        # 配置启动JN的物理地址(不同机器共享同一个JN的不同目录地址)和数据存储目录 
+        <property>
+          <name>dfs.namenode.shared.edits.dir</name>
+          <value>qjournal://node01:8485;node02:8485;node03:8485/mycluster</value>
+        </property>
+        
+        <property>
+          <name>dfs.journalnode.edits.dir</name>
+          <value>/var/bigdata/hadoop/ha/dfs/jn</value>
+        </property>
+
+        # 配置HA角色切换的代理类和切换实现的方法，使用的是SSH免密（还有写脚本的方法）
+        <property>
+          <name>dfs.client.failover.proxy.provider.mycluster</name   
+                  <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+        </property>
+		
+        <property>
+          <name>dfs.ha.fencing.methods</name>
+          <value>sshfence</value>
+        </property>
+        <property>
+          <name>dfs.ha.fencing.ssh.private-key-files</name>
+          <value>/root/.ssh/id_rsa</value>
+        </property>
+
+        # 配置HA自动化 启动hdfs时自动启动zkfc（与NN同机）
+         <property>
+           <name>dfs.ha.automatic-failover.enabled</name>
+           <value>true</value>
+         </property>
+
+    </configuration>
+
+# 分发配置到其他机器上
+scp core-site.xml hdfs-site.xml node02:`pwd`
+scp core-site.xml hdfs-site.xml node03:`pwd`
+scp core-site.xml hdfs-site.xml node04:`pwd`
 ```
 
 - zookeeper的/bin目录下有 zkServer.sh,zkCli.sh；/conf目录下有zoo_sample.cfg，文件中写了在内存中存数据的临时目录，需要将其修改为可靠目录，并添加服务器节点的配置信息
@@ -850,6 +947,26 @@ zookeeper leader选举
 
   ![image-20230813170521945](assets/image-20230813170521945.png)
 
-mycluster字符串，定义目录，用来隔离不同机器上的相同操作
+
+
+### 初始化启动
+
+（1-5是搭建时做的，后续只需要做6启动 start 停止stop）
+
+1. 先在所有机器上启动JN  `hadoop-daemon.sh start journalnode`，创建jn的数据存放目录
+
+   
+
+2. 选择一个NN做主，进行格式化 `hdfs namenode -format`
+
+3. 启动这个NN，以备其他NN同步元数据 `hadoop-daemon.sh start namenode`
+
+4. 在另外一台机器上，同步与主NN的元数据 `hdfs namenode -bootstrapStandby`
+
+5. 格式化ZooKeeper自动切换主备`hdfs zkfc -formatZK`
+
+6. 启动集群 `start-dfs.sh` 
+
+
 
 - 
