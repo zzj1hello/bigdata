@@ -790,11 +790,11 @@ vi /etc/profile
 	export PATH=$PATH:ZOOKEEPER_HOME/bin # 加上
 . /etc/profile
 
+# 配置ZooKeeper集群 使他们在各台机器上启动时 能形成集群
 cd /opt/bigdata/zookeeper*/conf
 cp zoo_sample.cfg zk.cfg
 vi zk.cfg
 	 dataDir=/tmp/zookeeper  修改为 dataDir=/var/bigdata/hadoop/zk
-	 # 配置ZooKeeper集群节点 
 	 server.1=node02:2888:3888
 	 server.2=node03:2888:3888
 	 server.3=node04:2888:3888
@@ -814,7 +814,7 @@ echo 2 > /var/bigdata/hadoop/zk/myid
 mkdir /var/bigdata/hadoop/zk
 echo 3 > /var/bigdata/hadoop/zk/myid
 
-# 启动zookeeper
+# 启动zookeeper 将启动ZK服务器，将配置
 zkServer.sh start
 
 # 修改HADOOP配置
@@ -866,7 +866,7 @@ vi hdfs_site.xml
         </property>
         <property>
           <name>dfs.namenode.rpc-address.mycluster.nn2</name>
-          <value>node02.com:8020</value>
+          <value>node02:8020</value>
         </property>
 
         <property>
@@ -924,7 +924,7 @@ scp core-site.xml hdfs-site.xml node04:`pwd`
 
   - 指定了ZooKeeper集群中的每个不同服务器节点的信息，包括它们的地址和用于通信和选举的两个端口
 
-    给定至少三个ZK节点，存在至少两台能够相互通信，则可以选举出主NN（Leader节点），其他作为备用NN
+    给定至少三个ZK节点，存在至少两台时能够相互通信，则可以选举出主NN（Leader节点），其他作为备用NN
 
   - ZooKeeper的选举算法会考虑节点的可用性和通信延迟等因素，以选择合适的Leader节点。通常情况下，ZooKeeper会选择具有最高可用性和最低延迟的节点作为Leader节点。
 
@@ -951,22 +951,67 @@ zookeeper leader选举
 
 ### 初始化启动
 
-（1-5是搭建时做的，后续只需要做6启动 start 停止stop）
+1-5是搭建时做的，后续只需要做6启动start/停止stop HDFS HA，但如果有角色挂了，需要`hadoop-daemon.sh start <角色>` 去启动该角色
 
-1. 先在所有机器上启动JN  `hadoop-daemon.sh start journalnode`，创建jn的数据存放目录
+1. 先在node01 02 03中启动JN  `hadoop-daemon.sh start journalnode`，将创建jn的数据存放目录/var/bigdata/hadoop/ha/dfs/jn
 
-   
+   - 在node01中进入 /jn目录，是个空目录，因为NN还没有数据与JN同步
 
-2. 选择一个NN做主，进行格式化 `hdfs namenode -format`
+     ![image-20230814213126677](assets/image-20230814213126677.png)
 
-3. 启动这个NN，以备其他NN同步元数据 `hadoop-daemon.sh start namenode`
+   - 可以在node03机器的$HADDOOP_HOME/logs目录下，查看启动Jnode03机器上JN的最后几条日志，可以看到进程已经启动起来
 
-4. 在另外一台机器上，同步与主NN的元数据 `hdfs namenode -bootstrapStandby`
+     ![image-20230814211722573](assets/image-20230814211722573.png)
 
-5. 格式化ZooKeeper自动切换主备`hdfs zkfc -formatZK`
+2. 在node01，进行格式化 `hdfs namenode -format`
+
+   - 格式化成功，生成name目录，并存放着FI和VERSION文件
+
+   ![image-20230814211510864](assets/image-20230814211510864.png)
+
+   - VERSION文件中可查看到集群ID
+
+   - 查看node03机器的JN log日志，发现这台机器在初始化并创建 jn/mycluster目录（其他机器上JN数据目录同理）
+
+     ![image-20230814212034786](assets/image-20230814212034786.png)
+
+   - node03对应目录下的的集群id与node01的一样
+
+     ![image-20230814212228917](assets/image-20230814212228917.png)
+
+3. 在node01启动主NN，以备其他NN同步元数据 `hadoop-daemon.sh start namenode`
+
+   ![image-20230814212946406](assets/image-20230814212946406.png)
+
+4. 在node02启动备用NN，以同步与主NN的元数据 `hdfs namenode -bootstrapStandby`
+
+   - 这台机器也会生成 name目录，存放元数据，也有这相同的集群ID
+
+     ![image-20230814212545887](assets/image-20230814212545887.png)
+
+     ![image-20230814212629407](assets/image-20230814212629407.png)
+
+5. 格式化ZooKeeper以**自动切换**主备 `hdfs zkfc -formatZK` （启动ZK已在配置中完成，此时相当于连接到ZK服务器）
+
+   1. 首先可以在node04中打开ZK的客户端 `zkCli.sh`
+
+      `ls /`显示ZK根目录
 
 6. 启动集群 `start-dfs.sh` 
 
 
 
-- 
+
+
+
+
+# ZooKeeper
+
+在 ZooKeeper 中，节点是数据存储和组织的基本单位。理解 ZooKeeper 中的节点和路径存在关系：
+
+1. **ZooKeeper 服务器集合**: ZooKeeper 是一个分布式系统，通常由多个服务器组成。这些服务器通过共享数据来提供高可用性和容错能力。
+2. **树形命名空间**: ZooKeeper 使用一个树形结构来组织和管理数据。这个树形结构被称为命名空间（namespace），类似于文件系统的目录结构。**树的每个节点都可以存储数据**。
+3. **ZNode**: 在 ZooKeeper 中，每**个节点被称为 ZNode**。ZNode 是 ZooKeeper 中数据存储的基本单元。**每个 ZNode 都有一个唯一的路径标识，类似于文件系统中的路径**。
+   1. **持久节点**: 持久节点是一种在 ZooKeeper 中创建后将一直存在的节点。它们不会因为客户端的断开连接或会话过期而消失。
+   2. **临时节点**: 临时节点是在客户端会话存在期间存在的节点。当客户端会话结束时，临时节点将被自动删除。临时节点通常用于临时状态或临时任务的标记。
+   3. **顺序节点**: 顺序节点是在节点路径的末尾自动追加一个唯一的递增序列号的节点。顺序节点的创建顺序由 ZooKeeper 服务器保证。顺序节点的序列号使得节点的创建顺序可预测，有助于实现分布式协调和队列等功能。
