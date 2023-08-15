@@ -439,6 +439,8 @@ vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机
 >
 > - 3个数字分别表示用户 组 其他人的权限 
 > - 每个数字取0-7，代表：没有权限（无法读取、写入或执行）；执行权限；写入权限；写入和执行权限；读取权限；读取和执行权限；读取和写入权限；读取、写入和执行权限
+>   - 数字0-7的产生：由rwx表示”读 写 打开目录“，取1表示可以，0表示不行，组成3位二进制
+>
 >
 > hadoop目录文件
 >
@@ -558,7 +560,7 @@ vi slaves # 设置DataNode DN在哪
 
 ### HDFS使用
 
-hdfs dfs + <-命令>，在HDFS中创建用户数据文件，而不是本地机器的文件系统中，和各角色的数据存放目录存在本地不同
+hdfs dfs + <-命令>，在HDFS中**创建用户数据文件**，在而不是单纯本地机器的文件系统中，和各角色的数据存放目录存在本地不同（取决于是不是完全的分布式，将数据存放目录配置在其他机器上）
 
 1. 在NN数据目录中创建目录：`hdfs dfs -mkdir 目录`，如`hdfs dfs -mkdir -p usr/root`，创建home目录（多级目录 -p）
 
@@ -800,12 +802,12 @@ vi zk.cfg
 	 server.3=node04:2888:3888
 cd /var/bigdata/hadoop
 mkdir /zk
-echo 1 > /zk/myid
+echo 1 > /zk/myid # 写入权重
 
 # 分发到node03 node04中
 cd /var/bigdata/
-scp -r ./zookeeper- node03:`pwd`
-scp -r ./zookeeper- node04:`pwd`
+scp -r ./zookeeper node03:`pwd`
+scp -r ./zookeeper node04:`pwd`
 
 # 同样加入ZOOKEEPER_HOME 并在其他机器上不上权重文件
 mkdir /var/bigdata/hadoop/zk
@@ -953,13 +955,15 @@ zookeeper leader选举
 
 1-5是搭建时做的，后续只需要做6启动start/停止stop HDFS HA，但如果有角色挂了，需要`hadoop-daemon.sh start <角色>` 去启动该角色
 
+⭐️需要学会查看JN，ZKFC的日志，在ZK客户端查看锁的变化⭐️
+
 1. 先在node01 02 03中启动JN  `hadoop-daemon.sh start journalnode`，将创建jn的数据存放目录/var/bigdata/hadoop/ha/dfs/jn
 
    - 在node01中进入 /jn目录，是个空目录，因为NN还没有数据与JN同步
 
      ![image-20230814213126677](assets/image-20230814213126677.png)
 
-   - 可以在node03机器的$HADDOOP_HOME/logs目录下，查看启动Jnode03机器上JN的最后几条日志，可以看到进程已经启动起来
+   - 可以在node03机器的$HADDOOP_HOME/logs目录下，查看启动Jnode03机器上JN的最后几条日志，可以看到进程已经启动起来，但和node01的JN数据目录一样，现在还是空目录
 
      ![image-20230814211722573](assets/image-20230814211722573.png)
 
@@ -973,15 +977,15 @@ zookeeper leader选举
 
    - 查看node03机器的JN log日志，发现这台机器在初始化并创建 jn/mycluster目录（其他机器上JN数据目录同理）
 
-     ![image-20230814212034786](assets/image-20230814212034786.png)
+     <img src="assets/image-20230814212034786.png" alt="image-20230814212034786" style="zoom:67%;" />
 
    - node03对应目录下的的集群id与node01的一样
 
-     ![image-20230814212228917](assets/image-20230814212228917.png)
+     <img src="assets/image-20230814212228917.png" alt="image-20230814212228917" style="zoom: 67%;" />
 
 3. 在node01启动主NN，以备其他NN同步元数据 `hadoop-daemon.sh start namenode`
 
-   ![image-20230814212946406](assets/image-20230814212946406.png)
+   <img src="assets/image-20230814212946406.png" alt="image-20230814212946406" style="zoom:67%;" />
 
 4. 在node02启动备用NN，以同步与主NN的元数据 `hdfs namenode -bootstrapStandby`
 
@@ -989,21 +993,74 @@ zookeeper leader选举
 
      ![image-20230814212545887](assets/image-20230814212545887.png)
 
-     ![image-20230814212629407](assets/image-20230814212629407.png)
+     <img src="assets/image-20230814212629407.png" alt="image-20230814212629407" style="zoom:67%;" />
 
-5. 格式化ZooKeeper以**自动切换**主备 `hdfs zkfc -formatZK` （启动ZK已在配置中完成，此时相当于连接到ZK服务器）
+5. 格式化ZooKeeper以**自动切换**主备 `hdfs zkfc -formatZK` （启动ZK已在配置中完成，相当于连接到了ZK服务器，此时使用zkfc去格式化ZK集群）
 
-   1. 首先可以在node04中打开ZK的客户端 `zkCli.sh`
+   ![image-20230815205217903](assets/image-20230815205217903.png)
 
-      `ls /`显示ZK根目录
+   在node04中打开ZK的客户端 `zkCli.sh`，`ls /`显示ZK根目录，可以看到格式化ZK集群后，生成了空目录
 
-6. 启动集群 `start-dfs.sh` 
+   ![image-20230815205337749](assets/image-20230815205337749.png)
+
+   
+
+6. 在node01启动集群 `start-dfs.sh` 
+
+   - 可以看到角色：成功在node01 02启动NN ZKFC，在node02 03 04启动DN，在node01 02 03启动JN![image-20230815205855833](assets/image-20230815205855833.png)
+
+   - 在node03的日志中，将发生JN与NN的数据同步
+
+     ![image-20230815205950154](assets/image-20230815205950154.png)
+
+     ![image-20230815210036801](assets/image-20230815210036801.png)
+
+   - 在node02的ZK客户端中`get 锁的节点路径`可以看到，在集群启动后，生成了节点目录，即ZKFC的抢锁机制，在ZK中创建了临时节点，可以看到是node01抢到了锁，是主NN（ephemeralOwner= 表示锁的临时持有者为node01）
+
+     ![image-20230815210336769](assets/image-20230815210336769.png)
+
+   - 浏览器访问，也可看到node01为主NN，node02为备用NN
+
+     <img src="assets/image-20230815212800261.png" alt="image-20230815212800261" style="zoom:67%;" />
+
+     <img src="assets/image-20230815212726060.png" alt="image-20230815212726060" style="zoom:50%;" />
+
+测试主备自动切换
+
+- kill node01中的NN进程 （kill -9 表示强制杀死）
+
+  ![image-20230815212931920](assets/image-20230815212931920.png)
+
+- 在node02的ZK客户端中，再次查看锁，可以看到此时锁的持有者自动切换为node01。浏览器中也可以相应发生主备切换
+
+  ![image-20230815213213018](assets/image-20230815213213018.png)
+
+  ![image-20230815213252518](assets/image-20230815213252518.png)
+
+  <img src="assets/image-20230815213311303.png" alt="image-20230815213311303" style="zoom:67%;" />
+
+- 再次启动node01中的NN（`hadoop-daemon.sh start namenode`），主备不切换
+
+- 杀死node02中的ZKFC进程，此时ZKFC无法连接到ZK集群，主备再次发生切换
+
+  ![image-20230815213553823](assets/image-20230815213553823.png)
+
+- 恢复node02中的ZKFC（`hadoop-deamon.sh start zkfc`），虚拟机环境下将node01的网卡down掉，使其无法与外界通信（`ifconfig eth0 down`），此时两台机器都处于Standby，因为node02此时无法检查到node01的情况，（觉得可能node01只是和自己连不通，还能和外界连接）；检查node02的$HADOOP_HOME/logs 的ZKFC日志（`tail -f hadoop-root-zkfc-node02.log`），可以看到其无法连接到node01
+
+  ![image-20230815214417093](assets/image-20230815214417093.png)
+
+- 再宿主机上恢复node01的网卡通信（`ifconfig eth0 up`），此时成功将node02升为主NN，node01降为Standby，日志也显示成功
+
+  ![image-20230815214610640](assets/image-20230815214610640.png)
+
+  <img src="assets/image-20230815214626527.png" alt="image-20230815214626527" style="zoom:50%;" />
 
 
 
+## HDFS命令使用
 
-
-
+1. 权限
+2. 
 
 # ZooKeeper
 
