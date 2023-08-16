@@ -419,7 +419,7 @@ tar xf hadoop*.tar.gz
 # 添加环境变量（操作系统的环境变量） 在容易位置可以执行hadoop命令
 vi /etc/profile
 	export HADOOP_HOME=...
-	export PATH=...:HADOOP_HOME/bin:HADOOP_HOME/sbin
+	export PATH=...:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
 
 source /etc/profile
 
@@ -1059,8 +1059,50 @@ zookeeper leader选举
 
 ## HDFS命令使用
 
-1. 权限
-2. 
+在active的NN中，打开浏览器，看到空的目录树，位于根目录
+
+![image-20230816214406385](assets/image-20230816214406385.png)
+
+常用的`hdfs dfs -命令`
+
+1. HDFS的目录和文件操作
+
+   - 目录操作：`hdfs dfs -mkdir -p /user/root`，加了-p表示创建多级目录，此时在根目录的root用户下，创建了user目录，没有数据块的大小等信息。注意该root用户是默认用户
+
+   - 文件操作：`hdfs dfs -put 本地当前目录文件`，在root用户下创建了一个文件，有数据块大小等信息
+
+   - HDFS有用户、权限概念，但HDFS没有创建用户的命令，其基于哪台机器上哪个用户在使用，会报告给HDFS，生成用户（信任客户端，默认使用操作系统的用户）
+
+   - HDFS还有超级用户概念，Linux的SU是root，HDFS的SU是NN进程的启动用户
+
+   - HDFS的权限是自己能够用命令控制的（sudo控制）
+
+     ![image-20230816215302274](assets/image-20230816215302274.png)
+
+2. 权限：一般不用root管理员用户启动NN进程，而使用普通用户，给他赋权，去启动集群，作为HDFS的管理员。需要在所有节点的root用户下，都执行以下用户和权限设置
+
+   1. 先停掉已经启动的集群，`stop-dfs.sh`（在node01 02 有NN的机器上执行都可以），此时只有ZK进程，其他HDFS进程都没有了
+
+   2. 添加用户：添加用户`useradd god`；设置用户密码`passwd god`。`cd /home`，可以看到god用户目录
+
+      ![image-20230816222039084](assets/image-20230816222039084.png)
+
+   3. 赋予用户权限（将资源访问权限绑定给用户），包括安装部署程序和数据存放目录：
+
+      - 将Hadoop的软件（之前设置的HADOOP_HOME目录）-R连同子目录都change owner赋权给god用户`chown -R god /opt/hadoop`，此时只有god和root（任何权限形同虚设）有rwx权限
+
+        <img src="assets/image-20230816222427168.png" alt="image-20230816222427168" style="zoom:50%;" />
+
+      - 同理赋权数据存放目录的rwx权限，`chown -R god /var/bigdata`
+
+        ![image-20230816222816209](assets/image-20230816222816209.png)
+
+   4. 切换god去启动集群：
+
+      1. 设置god用户下启动（不同机器上）的进程之间访问需要的免密
+      2. 
+
+3. 
 
 # ZooKeeper
 
