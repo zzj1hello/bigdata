@@ -1071,9 +1071,9 @@ zookeeper leader选举
 
    - 文件操作：`hdfs dfs -put 本地当前目录文件`，在root用户下创建了一个文件，有数据块大小等信息
 
-   - HDFS有用户、权限概念，但HDFS没有创建用户的命令，其基于哪台机器上哪个用户在使用，会报告给HDFS，生成用户（信任客户端，默认使用操作系统的用户）
+   - HDFS有用户、权限概念，但HDFS没有创建用户、组的命令，其基于OS在上哪个用户在使用，会报告给HDFS，生成用户和组（信任客户端，默认使用操作系统的用户），并基于OS的用户、组添加方法，进行权限的分配
 
-   - HDFS还有超级用户概念，Linux的SU是root，HDFS的SU是NN进程的启动用户
+   - HDFS还有超级用户概念
 
    - HDFS的权限是自己能够用命令控制的（sudo控制）
 
@@ -1097,12 +1097,167 @@ zookeeper leader选举
 
         ![image-20230816222816209](assets/image-20230816222816209.png)
 
-   4. 切换god去启动集群：
+   4. 切换god用户去启动集群：
 
-      1. 设置god用户下启动（不同机器上）的进程之间访问需要的免密
-      2. 
+      ```bash
+      # 1. 首先要设置god用户下启动（不同机器上）的进程之间访问需要的免密
+      # 在所有节点god用户的/home 下生成.ssh目录
+      su god 
+      ssh localhost # 
+      
+      # 将node01 02的公钥发到自己和其他机器的authorized_keys中
+      ssh -keygen -t dsa -P '' -f /,ssh/id_dsa
+      cd .ssh
+      
+      cat id_dsa.pub >> authorized_keys
+      # 不同于root的免密 其他用户的免密需要设置authorized_keys只有文件所有者可以读取和写入该文件
+      chmod 600 authorized_keys
+      # 在node01中分发公钥
+      scp id_dsa.pub node03:`pwd`/node02.pub
+      scp id_dsa.pub node03:`pwd`/node03.pub
+      scp id_dsa.pub node03:`pwd`/node04.pub
+      
+      # 以下命令可以代替上面的 cat+chmod+scp 直接将公钥写到目标主机的authorized_keys中
+      # 因此可用该命令直接在node02中 实现对自己免密 对node01免密
+      cd /home/god/.ssh
+      ssh-copy-id -i id_dsa node01
+      ssh-copy-id -i id_dsa node02
+      
+      # 2. 修改hdfs_site.xml
+      # 在node01上修改ha配置文件hdfs_site.xml中设置免密的私钥路径
+      cd $HADOOP_HOME/etc/hadoop
+      vi hdfs_site.xml
+      		<property>
+                <name>dfs.ha.fencing.ssh.private-key-files</name>
+                <value>/home/god/.ssh/id_dsa</value>
+              </property>
+      
+      # node01上方法hdfs_site.xml
+      scp hdfs_site.xml node02:`pwd`
+      scp hdfs_site.xml node03:`pwd`
+      scp hdfs_site.xml node04:`pwd`
+      
+      # 3. god用户下启动集群
+      start-dfs.sh
+      ```
 
-3. 
+      - 设置免密需要注意的细节
+
+      ![image-20230817200628102](assets/image-20230817200628102.png)
+
+      - 启动后，hdfs相关进程都是有god用户启动的
+
+        ![image-20230817204213593](assets/image-20230817204213593.png)
+
+   5. 不同用户对文件的访问权限：在HDFS中谁启动集群谁最大，有rwx其他用户文件的权限，其他用户启动集群，root也没有rwx其他文件的权限
+
+      - god在浏览器中可以查看之前在HDFS上传建立的文件
+
+      - god可以创建自己用户和root等其他用户的文件 `hdfs dfs -mkdir -p /user/god` `hdfs dfs -mkdir /user/root/abc`
+
+        ![image-20230817210757936](assets/image-20230817210757936.png)
+
+        ![image-20230817210738661](assets/image-20230817210738661.png)
+
+      - 切换回系统的root用户，无法创建所属god的目录，只有god用户有权限
+
+        ```bash
+        exit
+        hdfs dfs -mkdir /user/god/abc # 报错
+        ```
+
+        ![image-20230817210945296](assets/image-20230817210945296.png)
+
+   6. 赋予组权限
+
+      ```bash
+      # node01
+      
+      # 使用god超级用户创建目录
+      su god 
+      hdfs dfs -mkdir /temp
+      # 使用hdfs命令添加组ooxx 赋予其访问/tmp的权限
+      hdfs dfs -chown god:ooxx /temp
+      hdfs dfs -chmod 770 /temp
+      ```
+      
+      ```bash
+      # node04
+      
+      # 在OS的root用户下添加good用户 添加ooxx组
+      exit
+      useradd good
+      groupadd ooxx
+      
+      # 将good用户添加到ooxx组中 
+      usermod -a -G ooxx good
+      id good # 查看当前OS中good是不是在ooxx组中
+      
+      # 切换到good用户 查看hdfs组的情况
+      su good
+      hdfs dfs -mkdir /temp/abc
+      	失败 没有权限
+      hdfs groups
+      	返回 good: 表示没有good用户没有组
+      ```
+      
+      ```bash
+      # node01
+      
+      # 在OS的root用户下添加good用户 添加ooxx组
+      exit
+      useradd good
+      groupadd ooxx
+      
+      # 将good用户添加到ooxx组中 
+      usermod -a -G ooxx good
+      id good # 查看
+      
+      # 切换到god超级用户下 告诉HDFS good用户到了ooxx组 （否则已经启动的HDFS不知道OS新创建了组）
+      su god
+      hdfs dfsadmin -refreashUserToGroupsMapping
+      
+      ```
+      
+      ```bash
+      # node04
+      
+      # 切换到good用户 查看hdfs组的情况
+      su good
+      hdfs groups
+      	此时显示 good:good ooxx
+      hdfs dfs -mkdir /tmp/abc # 能成功创建/temp/abc
+      ```
+      
+      ![image-20230817215957063](assets/image-20230817215957063.png)
+      
+      ![image-20230817220026986](assets/image-20230817220026986.png)
+      
+      ![image-20230817220036514](assets/image-20230817220036514.png)
+
+
+
+## HDFS 开发
+
+IDE：Windows IDEA ，开发HDFS的客户端代码
+
+1. 确定启动NN的用户
+
+   远程登录时设置；参考Windows环境变量（HADOOP_USER_NAME=god），设置好后打开IDEA；代码中给出
+
+2. 保证服务端的JDK版本与客户端开发环境的JDK版本一致
+
+构建工具：MAVEN，包含了依赖管理pom，有jar包仓库概念，有打包、测试、清除、构建项目的目录，GAV定位
+
+- Maven构建工具：Maven是一个Java项目管理和构建工具，用于自动化构建、依赖管理和项目管理。它使用XML格式的pom.xml（Project Object Model）文件来定义项目的配置和构建信息。
+- 依赖管理：Maven通过pom.xml文件中的`<dependencies>`元素来管理项目的依赖项。通过在**pom.xml中声明所需的库和版本，Maven可以自动下载和管理这些依赖项，并确保项目构建所需的依赖项可用**。
+- Jar包仓库：Maven使用中央仓库（Central Repository）作为默认的jar包仓库。中央仓库是一个集中存储了大量Java库和框架的公共仓库。Maven会自动从中央仓库下载所需的依赖项。
+- 打包、测试、清除、构建项目的目录：Maven使用约定的目录结构来组织项目源代码、资源文件和构建输出。例如，源代码位于`src/main/java`目录，测试代码位于`src/test/java`目录，构建输出位于`target`目录等。
+  - 打包：Maven可以将项目打包成不同的形式，如JAR、WAR、EAR等。通过配置pom.xml文件中的`<packaging>`元素，可以指定所需的打包类型。
+  - 测试：Maven提供了执行单元测试和集成测试的能力。测试代码可以放在特定的目录中，并使用Maven命令执行测试。
+  - 清除：Maven提供了清理构建输出的能力。可以使用`mvn clean`命令清除构建生成的目标文件和目录。
+  - 构建：Maven可以执行项目的构建过程，包括编译源代码、打包、运行测试等。可以使用`mvn install`命令构建项目。
+- GAV定位：GAV是Maven中的一个概念，用于唯一标识一个项目或依赖项。GAV代表Group ID（组织或项目组ID）、Artifact ID（项目或模块ID）和Version（版本号）。通过GAV的组合，**可以精确定位和管理项目或依赖项**。
 
 # ZooKeeper
 
