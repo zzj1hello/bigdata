@@ -1190,7 +1190,7 @@ zookeeper leader选举
       groupadd ooxx
       
       # 将good用户添加到ooxx组中 
-      usermod -a -G ooxx good
+      usermod -a -G ooxx good  （-aG）
       id good # 查看当前OS中good是不是在ooxx组中
       
       # 切换到good用户 查看hdfs组的情况
@@ -1247,17 +1247,83 @@ IDE：Windows IDEA ，开发HDFS的客户端代码
 
 2. 保证服务端的JDK版本与客户端开发环境的JDK版本一致
 
+3. IDEA快捷键：ctrl + P显示参数信息，Alt+Enter 补全代码（import 报错等）
+
 构建工具：MAVEN，包含了依赖管理pom，有jar包仓库概念，有打包、测试、清除、构建项目的目录，GAV定位
 
 - Maven构建工具：Maven是一个Java项目管理和构建工具，用于自动化构建、依赖管理和项目管理。它使用XML格式的pom.xml（Project Object Model）文件来定义项目的配置和构建信息。
+
 - 依赖管理：Maven通过pom.xml文件中的`<dependencies>`元素来管理项目的依赖项。通过在**pom.xml中声明所需的库和版本，Maven可以自动下载和管理这些依赖项，并确保项目构建所需的依赖项可用**。
-- Jar包仓库：Maven使用中央仓库（Central Repository）作为默认的jar包仓库。中央仓库是一个集中存储了大量Java库和框架的公共仓库。Maven会自动从中央仓库下载所需的依赖项。
+
+  - 下载Hadoop依赖的的common、hdfs、MapReduce、YARN
+
+- Jar包仓库：一个存储JAR文件的仓库，Maven根据项目中pom.xml文件中提供的jar包依赖信息，从存储库中查找并获取需要的jar包。Maven Repitory有3种类型:
+
+  - Local Repository – 本地库
+  - Central Repository – 中央库 （为默认的jar包仓库）
+  - Remote Repository – 远程库
+
+  - Maven搜索依赖项时，会按照：本地库、中央库和远程库的顺序进行。
+  - 官方网站：https://mvnrepository.com/
+
 - 打包、测试、清除、构建项目的目录：Maven使用约定的目录结构来组织项目源代码、资源文件和构建输出。例如，源代码位于`src/main/java`目录，测试代码位于`src/test/java`目录，构建输出位于`target`目录等。
+
   - 打包：Maven可以将项目打包成不同的形式，如JAR、WAR、EAR等。通过配置pom.xml文件中的`<packaging>`元素，可以指定所需的打包类型。
   - 测试：Maven提供了执行单元测试和集成测试的能力。测试代码可以放在特定的目录中，并使用Maven命令执行测试。
   - 清除：Maven提供了清理构建输出的能力。可以使用`mvn clean`命令清除构建生成的目标文件和目录。
   - 构建：Maven可以执行项目的构建过程，包括编译源代码、打包、运行测试等。可以使用`mvn install`命令构建项目。
+
 - GAV定位：GAV是Maven中的一个概念，用于唯一标识一个项目或依赖项。GAV代表Group ID（组织或项目组ID）、Artifact ID（项目或模块ID）和Version（版本号）。通过GAV的组合，**可以精确定位和管理项目或依赖项**。
+
+
+
+在IDEA中构建项目
+
+1. Maven的repository中搜 Hadoop的common HDFS yarn MapReduce，对应Hadoop集群的版本，复制依赖（包含GAV信息）到
+
+   ><!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common -->
+   ><dependency>
+   >    <groupId>org.apache.hadoop</groupId>
+   >    <artifactId>hadoop-common</artifactId>
+   >    <version>2.6.0</version>
+   ></dependency>
+
+2. 项目中包含源码目录java（放代码），新建放配置资源文件的目录resource，将目录类型设置为Resources Root（放配置文件，比如hdfs的配置文件hdfs的配置文件），pom.xml放jar包依赖
+
+   ![image-20230818154412436](assets/image-20230818154412436.png)
+
+3. 在源码目录下，创建一个Package，在这个Package下再创建一个Java Class
+
+   ![image-20230818154614538](assets/image-20230818154614538.png)
+
+   运行mkdir()方法，会生成target目录，存放编译信息（类文件和其他构建结果）
+   
+   ![image-20230818161506322](assets/image-20230818161506322.png)
+   
+   运行upload()方法，将本地的数据文件上传到HDFS
+   
+   运行blocks()方法，这是HDFS的精髓，体现了计算将数据移动，可以实现并行计算（通过获取元数据里的偏移量可以得到不同机器上的数据）。存在距离机制，使得备份的数据给最近的程序用来计算
+   
+   - 下面可以看到，打印了元数据信息；线性切分的两个数据块，通过seek偏移量找到分治的数据
+   
+     <table>
+       <tr>
+         <td>
+           <img src="assets/image-20230819171221088.png" alt="Image 1">
+         </td>
+         <td>
+           <img src="assets/image-20230819171204565.png" alt="Image 2">
+         </td>
+       </tr>
+     </table>
+   
+   
+
+# MapReduce
+
+HDFS一直写入多次读取，是阉割的文件系统，其把开销更多的放在了计算
+
+
 
 # ZooKeeper
 
