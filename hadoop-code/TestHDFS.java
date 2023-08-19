@@ -56,6 +56,7 @@ public class TestHDFS {
 
         //1. 获取并打印HDFS的元数据
         Path file = new Path("/zzj/out.txt");
+        FileStatus fss = fs.getFileStatus(file);
         BlockLocation[] blks = fs.getFileBlockLocations(fss, 0, fss.getLen());
         for (BlockLocation b: blks){
             System.out.println(b);
