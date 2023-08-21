@@ -444,7 +444,7 @@ vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机
 >
 > hadoop目录文件
 >
-> - hadoop/sbin目录下存放HDFS服务和其他服务启停的脚本(start-dfs.sh、start-yarn.sh)，hadoop/bin目录下存放应用功能命令模块(hadoop hdfs yarn)；hadoop/etc存放配置；hadoop/share存放jar包
+> - hadoop/sbin目录下存放HDFS服务和其他服务启停的脚本(start-dfs.sh、start-yarn.sh)，hadoop/bin目录下存放应用功能命令模块(hadoop hdfs yarn)；hadoop/etc存放配置；hadoop/share存放jar包，像是在hadoop/mapreduce下会有计算程序的jar包
 >
 > <table>
 >   <tr>
@@ -1079,7 +1079,7 @@ zookeeper leader选举
 
      ![image-20230816215302274](assets/image-20230816215302274.png)
 
-2. 权限：一般不用root管理员用户启动NN进程，而使用普通用户，给他赋权，去启动集群，作为HDFS的管理员。需要在所有节点的root用户下，都执行以下用户和权限设置
+2. 权限：一般（在生成环境中）不用root管理员用户启动NN进程，而使用普通用户，给他赋权，去启动集群，作为HDFS的管理员。需要在所有节点的root用户下，都执行以下用户和权限设置
 
    1. 先停掉已经启动的集群，`stop-dfs.sh`（在node01 02 有NN的机器上执行都可以），此时只有ZK进程，其他HDFS进程都没有了
 
@@ -1237,7 +1237,7 @@ zookeeper leader选举
 
 
 
-## HDFS 开发
+## HDFS开发
 
 IDE：Windows IDEA ，开发HDFS的客户端代码
 
@@ -1279,7 +1279,7 @@ IDE：Windows IDEA ，开发HDFS的客户端代码
 
 在IDEA中构建项目
 
-1. Maven的repository中搜 Hadoop的common HDFS yarn MapReduce，对应Hadoop集群的版本，复制依赖（包含GAV信息）到
+1. Maven的repository中搜 Hadoop的common HDFS yarn MapReduce，对应Hadoop集群的版本，复制依赖（包含GAV信息）到pom.xml中
 
    ><!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common -->
    ><dependency>
@@ -1362,6 +1362,7 @@ Reduce
   - Map Task的键值对输出，再根据Hash得到相同值的记录集合，称之为分组
   - 一个Reduce Task包含一组数据（一个分组）或者多组数据（自己定的并行度有关），称之为分区
   - **一个分组不会打散到不同分区中**：
+- shuffle：将Map阶段产生的中间数据（key-value对）按照key进行排序和合并的过程
 
 总结MR在干嘛
 
@@ -1374,7 +1375,7 @@ Reduce
 使用缓冲区和归并排序，降低IO开销
 
 - Split切片数据一条条记录Map出来得到K V，V由业务逻辑赋值，再会根据K做hash生成分区号P，最终一条记录变为KVP
-- Map得到的KVP集合，经过两次排序，分区有序+key有序，便于现成Reduce的分区
+- Map得到的KVP集合，经过两次排序，分区有序+key有序，便于形成Reduce的分区
 - Reduce接收相同P的记录现成分区，分区内部保证根据K有序，相同的Key做Reduce迭代计算
 
 <img src="assets/image-20230820113238705.png" alt="image-20230820113238705" style="zoom: 80%;" />
@@ -1383,9 +1384,288 @@ Reduce
 
 ## MR计算框架
 
-计算向数据移动需要知道数据在哪，用来计算的节点的cpu等资源情况，进行资源和任务的调度
+Map，Reduce组成客户端计算程序（Jar包），需要计算框架调度给计算资源，实现计算向数据移动，而计算向数据移动需要知道数据在哪，用来计算的节点的cpu等资源情况，进行资源和任务的调度
 
-角色
+角色和功能：
+
+- Cli客户端：计算的前置准备
+  - 将要计算的数据，通过NN元数据里block（属于哪个文件、偏移量、大小、备份location），转化为Split的清单，再转化为Map的数量
+    - 清单里存放的**所有数据块备份**的位置信息
+  - Split中的location信息，将用于后续指导Map计算任务移动到哪些节点
+  - 生成计算程序未来运行时的相关配置文件(.xml) 
+  - ⭐️为了保证**计算程序Jar包、Split数据清单、配置文件**能可靠的到达计算程序，因此需要把这些任务信息上传到HDFS的目录中
+    - Cli会调用JobTracker，要启动一个计算程序，并告知文件存在于HDFS的哪个目录
+    - 默认副本数为10，保证Map的并行度可能比较大，会启动很多的JobTracker去找DN存放的以上信息，如果副本少了可能导致网卡IO瓶颈，通过增加副本数，能改善负载
+    - 以上信息的文件大小很小，计算任务结束后同样也会被删除
+
+- JobTracker：资源管理+任务调度 （常服务，集群启动后一直存活，不会随着计算任务的结束而kill）
+  - 从HDFS中取得计算信息中的Split数据清单
+  - 根据TaskTracker汇报的资源，**确定选择**Split清单中的哪个存放Block块的节点，进行Map任务
+  - TaskTracker下一次心跳汇报到JB时，会取走分配给自己的任务信息
+- TaskTracker：任务管理+资源汇报
+  - 在心跳中取回任务
+  - 在HDFS中取得计算信息中的计算程序Jar包和配置信息
+  - 在当前节点启动Jar包中的计算程序
+
+
+
+JobTracker存在的三个问题
+
+1. 单点故障
+2. 压力过大
+3. 集成了资源管理、任务调度，两者耦合，导致未来新的计算程序、计算框架在向节点方法任务时，不能复用当前的资源管理（因为和MR的计算任务耦合住了），导致重复造轮子进行资源管理；而且不同的资源管理程序，产生资源争抢不均衡的问题
+   - 资源争抢：MapReduce对于作业的资源需求是**静态预先定义**的，而不会根据实际任务的执行情况进行动态调整；其他新的计算框架可能采用了不同的资源管理机制，如基于容器的资源管理。这些框架通常使用容器（例如Docker）来隔离任务和资源，并采用**动态的资源调度策略**，根据任务的实际需求和集群的可用资源进行动态分配。
+
+由于以上存在的问题，在Hadoop2.x时调整了MapReduce角色和功能
+
+- 引入资源管理框架（Apache YARN）提供了更好的资源感知和隔离能力，可以根据不同计算框架的需求进行动态的资源分配和调度，以避免资源争抢的问题。
+
+
+
+# Yarn
+
+看图 看架构（主从还是无主），用于专门进行资源管理的服务，与做计算的服务分离
+
+- RM是主，NM是从
+
+<img src="assets/image-20230821151726485.png" alt="image-20230821151726485" style="zoom:67%;" />
+
+角色和功能：
+
+1. 客户端（如MR的客户端）：**同样进行计算的前置准备（得到Split清单等任务信息），存入HDFS，通知RM申请一个自己计算程序的调度程序AppMstr**
+
+2. ResourceManager：**和NM联系，挑一台不忙的机器由NM启动App Mstr**（是一个Container反射出来的）
+
+   - 其接收Node Manager汇报的节点资源使用情况
+
+   - >YARN资源管理器通过**反射机制**，将Application Master的代码加载到相应的Container中，并启动执行。反射是指在运行时动态地获取一个类的信息并调用其方法，这样YARN就可以动态地加载和执行Application Master的代码。
+
+3. ApplicationMaster：用来计算程序的主节点，随着计算程序进行启动/杀死，联系Container进行的任务的调度
+
+   - AppMstr是仅作任务调度的JobTracker，也会向HDFS拉取Split数据清单，但因为不知道集群内各节点的资源使用情况，因此**AM要再联系RM申请资源**，由RM根据数据清单，**确定选择**Split清单中的哪个存放Block块的节点，进行Map任务
+
+4. Container：动态资源分配单位，封装了一定计算资源（有属性描述，属于哪个NM、cpu、内存、io），也是一个JVM进程（NM有线程去监控该进程的资源使用情况，超额NM会kill掉）
+
+   >⭐️程序运行时需要指定Container的资源配额，否则计算启动就会超额报错
+
+   - **RM根据清单通知NM启动Container，反向联系AppMstr进行注册**
+   - AppMstr知道有多少节点能进行任务调度，**将计算任务以消息信息传递给这些注册了的Container**
+   - **Container会反射相应的Task类为对象（自己去拉取Jar包等任务信息）进行计算任务**
+
+容错机制（失败重置机制）：
+
+- Node Manager故障
+  - 在Container中跑程序的NM坏了，AppMstr会重新向RM申请资源，在存活的节点上启动Container，重新注册，重启任务
+  - AppMstr的失败重置，由RM也会在存活的节点上启动AppMstr，其他运行Container向他重新注册
+- 主RM故障：在Hadoop2.x，已经支持Yarn的RM的HA模式，即使用的ZK的主备切换
+
+优点
+
+- 解决单点故障
+  - 原来的MR的资源管理：JT单点管理所有任务，JT挂了，整个计算层没有了调度
+  - Yarn：一个计算客户端启动一个ApplicationMaster去找Container完成任务，每个计算程序有独立唯一的资源调度程序AM；并且支持AM的失败重试，能解决单点故障
+- 解决压力过大
+  - Yarn的每个计算程序有独立唯一的资源调度程序AM，AM启动在不同节点，默认能负载均衡 
+- 解耦资源管理与任务调度
+  - Yarn只用于资源管理：不同计算框架只要支持Yarn的AM接口（进程调度、线程调度、反射、序列化反序列化等实现AM，与RM通信），在节点上运行ApplicationMaster就能复用一个资源管理，使用统一视图的资源层
+
+> JT TT是MR的常服务， Yarn中的Cli、调度角色、任务都是临时服务
+>
+> Yarn中的Container角色，会运行AM，并最终运行Map/Reduce Task
+
+
+
+# MR on Yarn
+
+角色规划
+
+- DN和NM在同一机器上
+- Hadoop2.x的RM自带主备HA，因此也放在两台机器上
+  - HDFS是Hadoop2.x才有HA的，为了不改变NN，追加了ZKFC角色去实现自动主备切换
+  - 而Yarn也使用ZK，但不需要如ZKFC的第三方进程去协调，因为其是Hadoop2.x才有的系统，在设计RM时，就加了主备切换HA的模块
+  - 这样还没有了HDFS HA中，NN、ZKFC一个挂一个不挂产生的奇怪问题
+- HDFS和Yarn的角色不会相互依赖，因此不需要停掉HDFS，以创建Yarn的角色
+
+<img src="assets/image-20230821194335375.png" alt="image-20230821194335375" style="zoom:50%;" />
+
+## 应用配置
+
+mapred-site.xml
+
+```xml
+<configuration>
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+    </property>
+</configuration>
+
+```
+
+yarn-site.xml
+
+```xml
+<configuration>
+    <property>
+        <name>yarn.nodemanager.aux-services</name> 
+        <value>mapreduce_shuffle</value>
+    </property>
+    
+    <property>
+      <name>yarn.resourcemanager.ha.enabled</name>
+      <value>true</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.zk-address</name>
+      <value>node02:2181,node03:2181,node04:2181</value>
+    </property>
+
+    <property>
+      <name>yarn.resourcemanager.cluster-id</name>
+      <value>mashibing</value>
+    </property>
+    
+    <property>
+      <name>yarn.resourcemanager.ha.rm-ids</name>
+      <value>rm1,rm2</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.hostname.rm1</name>
+      <value>node03</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.hostname.rm2</name>
+      <value>node04</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.webapp.address.rm1</name>
+      <value>node03:8088</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.webapp.address.rm2</name>
+      <value>node04:8088</value>
+    </property>
+</configuration>
+```
+
+- 通过将`yarn.nodemanager.aux-services`属性设置为`mapreduce_shuffle`，YARN节点管理器将启用Shuffle服务作为**辅助服务**。这使得在YARN集群中运行的MapReduce作业能够使用Shuffle服务进行中间数据的处理和传输。
+- ZK是复用的技术用来实现HA或分布式协调，为了保证各个服务隔离，使用文件系统的前缀，在`yarn.resourcemanager.cluster-id`指定前缀路径
+- `yarn.resourcemanager.ha.rm-ids`和`yarn.resourcemanager.hostname.rm1`分别建立RM的逻辑名称和主机名称，会向ZK的目录抢锁
+
+```bash
+# 在node01中进行配置
+cd $HADOOP_HOME/etc/hadoop
+cp mapred-site.xml.template mapred-site.xml
+vi mapred-site.xml
+vi yarn-site.xml
+
+# 将配置文件分发到其他主机中
+scp mapred-site.xml yarn-site.xml node02:`pwd`
+scp mapred-site.xml yarn-site.xml node03:`pwd`
+scp mapred-site.xml yarn-site.xml node04:`pwd`
+```
+
+- 没有配置NM，这是因为NM也属于slaves，其在哪启动和DN一样，因此在slaves文件中已经定义了
+
+
+
+## 启动Yarn
+
+1. `start-yarn.sh` 
+
+   ![image-20230821204837382](assets/image-20230821204837382.png)
+
+   - 脚本bug：错误的在node01上启动了RM，进程会再次查看配置信息，发现启动错了，从而把自己kill掉了
+
+   - 在logs中可以查看该进程的日志`vi log/yarn-root-resourcemanger-node02.log`，按`G`跳到文件最后，查看报错信息
+
+     ![image-20230821205740874](assets/image-20230821205740874.png)
+
+2. 查看jps，发现没有在node03 04成功启动RM；在node02上打开ZK客户端 `zkCli.sh`，发现也没有生成Yarn上的前缀节点路径
+
+![image-20230821204940957](assets/image-20230821204940957.png)
+
+3. 需要手工在这两台机器上启动RM `yarn-deamon.sh start resourcemanager`；同时再查看ZK客户端上的节点目录，生成了Yarn的ZK前缀，node03自动获取到了锁
+
+   ![image-20230821205025329](assets/image-20230821205025329.png)
+
+   ![image-20230821205325938](assets/image-20230821205325938.png)
+
+4. 在浏览器中，访问node03 04的8088端口进行查看
+
+   浏览器访问 http://node03:8088时，点"About"，显示如下
+
+   <img src="assets/image-20230821205930460.png" alt="image-20230821205930460" style="zoom:50%;" />
+
+   浏览器访问http://node04:8088时，显示如下，但会马上重定向回http://node03:8088
+
+   ![image-20230821210143837](assets/image-20230821210143837.png)
+
+   而当访问http://node04:8088/cluster/cluster这个非主页，展开的地址后不会跳转
+
+   <img src="assets/image-20230821210304775.png" alt="image-20230821210304775" style="zoom:50%;" />
+
+5. kill node03中的RM进程，可以实现主备的自动切换
+
+   锁的临时节点发生改变，锁的持有者也变为了node04
+
+   ![image-20230821210449880](assets/image-20230821210449880.png)
+
+   <img src="assets/image-20230821210605936.png" alt="image-20230821210605936" style="zoom:50%;" />
+
+6. 在主页的 “Nodes”中查看NM从节点是否与RM连接，保证计算环境不出现问题，能启动Container
+
+   <img src="assets/image-20230821210943181.png" alt="image-20230821210943181" style="zoom: 50%;" />
+
+## 运行计算程序
+
+WordCount程序
+
+```bash
+# 1.在HDFS中建立目录 上传文件 每个块1M
+hdfs dfs -mkdir -p /data/wc/input
+hdfs dfs -D dfs.blocksize=1048576 -put data.txt /data/wc/input
+
+# 2. 使用自带的jar包进行 运行hadoop jar命令指定参数（程序类 输入文件/目录 不存在的输出目录） 指定目录的话会运行该目录下的所有数据文件 输出目录一定要是不存在的 否则程序会因为覆盖问题报错
+cd $HADOOP_HOME/share/hadoop/mapreduce
+hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/wc/output
+```
+
+**看命令行输出**：运行程序，会给出进度信息，和其他统计信息
+
+![image-20230821213117452](assets/image-20230821213117452.png)
+
+![image-20230821213149227](assets/image-20230821213149227.png)
+
+<img src="assets/image-20230821213329081.png" alt="image-20230821213329081" style="zoom:50%;" />
+
+**看WebUI**：在8088端口中的Yarn主页中点击"Applications"，可以看到有一个MAPREDUCE计算程序在跑，可以得知Yarn也可以支持其他计算程序类型
+
+![image-20230821213042298](assets/image-20230821213042298.png)
+
+查看输出目录有哪些文件 `hdfs dfs -ls /data/wc/output`
+
+- 标志文件_SUCCESS，表示程序是否成功
+
+- part-r-00000输出数据文件，其中的"r"表示是Map+Reduce任务的输出结果；如果是"m" 表示仅完成Map任务的输出结果（KV结果），没有经由Reduce任务；如果有多个输出，后缀会更新为00001...
+
+  ![image-20230821213952588](assets/image-20230821213952588.png)
+
+- 查看输出数据文件 `hdfs dfs -cat part-r-00000`，计算层能把线性切分导致的不完整词，还原回去
+
+  ![image-20230821214114950](assets/image-20230821214114950.png)
+
+- 可以通过`hdfs dfs -get part-r-00000 ./` 把该输出文件保存到本地当前目录
+
+
+
+## 客户端开发
+
+引入Apache Hadoop Client Aggregator可以把HDFS开发 MapReduce开发等客户端开发的依赖全聚合起来了，引入该依赖，复制到pom.xml
+
+![image-20230821221250193](assets/image-20230821221250193.png)
+
+
 
 # ZooKeeper
 
