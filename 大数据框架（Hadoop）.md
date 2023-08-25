@@ -1665,7 +1665,47 @@ hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/w
 
 ![image-20230821221250193](assets/image-20230821221250193.png)
 
+1. 把mapred-site.xml和yarm-site.xml放到resources目录下；根据类文档补全代码
 
+> Map类的map方法
+>
+> - 需要重写map方法，实现每条记录的业务逻辑，生成kv对
+> - 前后setup()和cleanup() 表示一次连接 多次map
+>
+> <img src="assets/image-20230824213956092.png" alt="image-20230824213956092" style="zoom:50%;" />
+>
+> 序列化和反序列化
+>
+> - Hadoop是分布式框架，需要进行数据的传输，这依赖于将数据序列化和反序列化
+> - Hadoop中可以使用自带的序列化反序列化数据类型
+>
+> - 排序中的字典序和数值序
+>   - 在计算机里，这个字典序就是比较任意字符串。对于两个字符串，大小关系取决于两个字符串从左到右第一个不同字符的 ASCII 值的大小关系。（ 数值序8<11，字典序11<8）
+>   - 自己开发类型时，要兼顾序列化反序列化与比较器排序方式
+
+2. 完成代码后，使用Maven的clean和package生成jar包
+
+   <img src="assets/image-20230825114924097.png" alt="image-20230825114924097" style="zoom:50%;" />
+
+   - clean：对项目进行清理，删除target目录下编译的内容
+
+   - install: 将工程打包到本地仓库，这时本地项目可以依赖，别人是依赖不了的;
+
+   - package:将项目中的各种文件，比如源代码、编译生成的字节码、配置文件、文档，按照规范的格式生成归档，最常见的当然就是JAR包和WAR包;
+
+   - deploy: 将打包的jar文件上传到私服(如果有私服)，此时连接私服的人才可以下载依赖。
+
+   - 输出target目录是一个Excluded目录 可能需要设置在idea中显示
+
+3. 将jar包传到某个集群节点中，使用hadoop jar +  jar包名 + 限定名（源代码文件所属的包）
+
+   ![image-20230825115729732](assets/image-20230825115729732.png)
+
+   ![image-20230825115804266](assets/image-20230825115804266.png)
+
+   可以看到存储层切割数据问题，计算框架也直接能处理了
+
+   ![image-20230825133550406](assets/image-20230825133550406.png)
 
 # ZooKeeper
 
