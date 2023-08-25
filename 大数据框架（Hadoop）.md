@@ -1,12 +1,11 @@
 Hadoop生态体系⭐️⭐️⭐️⭐️⭐️
-主要掌握分布式数据处理，存储的思想，以及会写一些简单的MR任务：
-Hadoop生态圈的全貌
-MR,Yarn,HDFS的工作过程
-Zookeeper架构以及原理
 
-数据采集的对应框架Sqoop，Flume
-
-任务平台Oozie和Azkaban，主要是了解工作原理
+- 主要掌握分布式数据处理，存储的思想，以及会写一些简单的MR任务：
+- Hadoop生态圈的全貌
+- MR,Yarn,HDFS的工作过程
+- Zookeeper架构以及原理
+- 数据采集的对应框架Sqoop，Flume
+- 任务平台Oozie和Azkaban，主要是了解工作原理
 
 
 
@@ -137,6 +136,8 @@ OLAP生态：
 
 
 
+# 大数据引入
+
 单机处理大数据存在的问题
 
 - 通过散列存储+计算，可以减少IO，但性能提升已经是极限（内存寻址比IO寻址快10万倍）
@@ -148,9 +149,13 @@ OLAP生态：
 
 大数据技术的关键：分而治之、并行计算、计算向数据移动、数据本地化读取
 
+企业追求平台（中台）、微服务、云
+
+- 要求**开发平台**，方便业务人员使用，方便直接调（大数据）接口使用
 
 
-05年
+
+05年开始的技术
 
 **Hadoop项目**包括，Hadoop common、Hadoop Distribution File System、Hadoop YARN、Hadoop MapReduce
 
@@ -1388,7 +1393,7 @@ Map，Reduce组成客户端计算程序（Jar包），需要计算框架调度�
 
 角色和功能：
 
-- Cli客户端：计算的前置准备
+- Cli客户端：计算的**前置准备**
   - 将要计算的数据，通过NN元数据里block（属于哪个文件、偏移量、大小、备份location），转化为Split的清单，再转化为Map的数量
     - 清单里存放的**所有数据块备份**的位置信息
   - Split中的location信息，将用于后续指导Map计算任务移动到哪些节点
@@ -1406,8 +1411,6 @@ Map，Reduce组成客户端计算程序（Jar包），需要计算框架调度�
   - 在心跳中取回任务
   - 在HDFS中取得计算信息中的计算程序Jar包和配置信息
   - 在当前节点启动Jar包中的计算程序
-
-
 
 JobTracker存在的三个问题
 
@@ -1655,6 +1658,8 @@ hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/w
 
   ![image-20230821214114950](assets/image-20230821214114950.png)
 
+  - 疑问：前面行的两个数字什么意思？
+
 - 可以通过`hdfs dfs -get part-r-00000 ./` 把该输出文件保存到本地当前目录
 
 
@@ -1697,7 +1702,7 @@ hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/w
 
    - 输出target目录是一个Excluded目录 可能需要设置在idea中显示
 
-3. 将jar包传到某个集群节点中，使用hadoop jar +  jar包名 + 限定名（源代码文件所属的包）
+3. 将jar包传到某个集群节点中，使用hadoop jar +  jar包名 + 限定名（源代码文件所属的包），其中input文件数据，output输出目录在程序中已经写死了
 
    ![image-20230825115729732](assets/image-20230825115729732.png)
 
@@ -1707,7 +1712,113 @@ hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/w
 
    ![image-20230825133550406](assets/image-20230825133550406.png)
 
-# ZooKeeper
+### 提交方式
+
+&#x1F680;&#x1F680;&#x1F680;&#x1F680;&#x1F680;&#x1F680;&#x1F680;&#x1F680;
+
+除了以上打jar包上传至集群节点，再通过hadoop jar命令运行计算程序的方式外，还有以下两种提交方式（考虑mapred-site.xml配置文件中的mapreduce.framework.name属性）
+
+2. 在本地环境执行，在集群中运行计算程序
+
+   - 和打jar方式一样，mapreduce.framework.name=yarn，同为on yarn集群运行计算程序
+
+   - Windows客户端下运行程序，需要跨平台接入到运行在Linux中的集群计算程序，可以参照"[mapred-default.xml](https://hadoop.apache.org/docs/stable/hadoop-mapreduce-client/hadoop-mapreduce-client-core/mapred-default.xml)"文件中mapreduce.app-submission.cross-platform属性，在代码中修改
+
+     ```java
+     conf.set("mapreduce.app-submission.cross-platform", "true");
+     ```
+
+     仍无法运行，找不到Map类和对应方法，这是因为没有在HDFS中上传jar包，Container反射不出来计算程序对象（Hadoop jar命令会隐式上传jar包）。此时需要再客户端代码中，告诉job对象jar包在哪，从而执行时会把同样会把jar生成至HDFS中
+
+     ```java
+     job.setJar(jar包的目录);
+     ```
+
+3. local单机环境运行计算程序 
+
+   - 设置配置下中的mapreduce.framework.name=local
+
+     ```java
+     // 可以通过conf.get("mapreduce.framework.name")得到配置的属性值
+     conf.set("mapreduce.framework.name", "local") // 修改默认读取的配置
+     ```
+
+   - 在1的修改基础上，若单机跑在Windows上，也需要保留跨平台提交的属性修改；此时单机运行，不需要上传jar包的修改
+
+   - 此外因为此时程序是使用Windows的JVM进程运行的计算程序，需要额外配置系统变量，并补充.dll补丁给Windows平台（不像Linux上运行，没那么多补丁）
+
+     - hadoop-2.7.2.tar.gz解压，添加win上的HADOOP_HOME环境变量，
+     - 下载[补丁](https://blog.csdn.net/a876147882/article/details/83375008)，把补丁都放到%HADOOP_HOME%/bin下，其中hadoop.dll放到C:\Windows\System32目录下
+     - 可能存在winutils.exe驱动的问题，下[修复工具](https://blog.csdn.net/programmer_trip/article/details/106912526)（[修复工具2](https://blog.csdn.net/vbcom/article/details/7245186)）解决
+
+   - 此方法不会在集群中显示运行，不会把输出写到HDFS目录中
+
+### 客户端参数
+
+```java
+public static void main(String[] args) throws Exception{
+}
+```
+
+args会输入两类参数
+
+- commandOptions：如 -D之后指定的属性和属性值，是系统配置需要的参数，需要写入的conf变量中
+- GenericOptions：如输入文件路径 输出路径，是程序运行个性化的参数
+
+使用Hadoop的类，会自动把commandOptions参数填充到conf中（不要了这些变量了）
+
+```java
+GenericOptionsParser parser = new GenericOptionsParser(conf, args);
+String[] other_args = parser.getRemainingArgs();
+```
+
+在IDEA中配置输入的参数列表
+
+<img src="assets/image-20230825162657214.png" alt="image-20230825162657214" style="zoom:50%;" />
+
+- 以第三种方式运行程序，输入输出换成win的**全局路径**：
+
+  <img src="assets/image-20230825192626893.png" alt="image-20230825192626893" style="zoom:50%;" />
+
+- 更新jar包，以第二种方式运行程序，HDFS上有着两个Reduce任务的输出文件
+
+  <img src="assets/image-20230825163921075.png" alt="image-20230825163921075" style="zoom: 50%;" />
+
+## 源码分析
+
+理解技术原理、细节，核心是如何实现分布式计算的三要素（不展开资源管理，资源层的事yarn...）
+
+1. 计算向数据移动
+2. 并行度、分治
+3. 数据本地化读取
+
+### 客户端
+
+客户端不参与计算（非win本地提交方式），但参与了jar包分发和并行度设置
+
+1. 异步执行
+
+   提交job的代码中`job.waitForCompletion(true);`，将触发submit()的异步执行，打印程序一直监控，直到作业完成
+
+   <img src="assets/image-20230825222137297.png" alt="image-20230825222137297" style="zoom:50%;" />
+
+2. 提交程序submit()中的`submitter.submitJobInternal(Job.this, cluster);`，其实现了将Block转成Split输入给MapTask
+
+3. 
+
+
+
+### MapTask
+
+
+
+### ReduceTask
+
+
+
+
+
+# ZooKeeper 
 
 在 ZooKeeper 中，节点是数据存储和组织的基本单位。理解 ZooKeeper 中的节点和路径存在关系：
 
