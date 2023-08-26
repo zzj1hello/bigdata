@@ -15,6 +15,10 @@ Hadoop生态体系⭐️⭐️⭐️⭐️⭐️
 
 马士兵Hadoop+源码：https://www.bilibili.com/video/BV1HG411g71n?p=4&spm_id_from=pageDriver&vd_source=89ddf71eb38188bf588f77ea08dd93b4
 
+马士兵Spark：https://www.bilibili.com/video/BV1Tg411Y7pr?p=1&vd_source=89ddf71eb38188bf588f77ea08dd93b4
+
+
+
 数据采集技术：
 
 - 离线数据采集：SQOOP、DataX、Kettle
@@ -1252,7 +1256,12 @@ IDE：Windows IDEA ，开发HDFS的客户端代码
 
 2. 保证服务端的JDK版本与客户端开发环境的JDK版本一致
 
-3. IDEA快捷键：ctrl + P显示参数信息，Alt+Enter 补全代码（import 报错等）
+3. IDEA快捷键：
+
+   - ctrl + P显示参数信息
+   - Alt+Enter 补全代码（import 报错等）
+   - ctrl+alt+left 回到上一次光标所处位置
+   - 双击shift，全局搜索（类 接口..）
 
 构建工具：MAVEN，包含了依赖管理pom，有jar包仓库概念，有打包、测试、清除、构建项目的目录，GAV定位
 
@@ -1340,6 +1349,7 @@ Reduce：以**一组记录**为单位做计算，因此要根据相同特征**ke
 
 Split（切片）与块的关系
 
+- ⭐️切片是为了解耦存储层和计算层，可以按照任务需要调切片大小⭐️
 - 块是HDFS存放文件时定死了的，但Split是逻辑概念，表示用于`CPU计算密集型任务`和`读取IO密集型任务`的输入文件，其可能是一个块、或者是一块的部分、或是多个块的叠加，从而满足不同的任务需求
 - 每个Split大小是一样的，Split的数量决定并行度
 - 若出现一句连续的文本，被不同块切割，导致分在不同的Split，计算框架会解决这个问题
@@ -1377,7 +1387,7 @@ Reduce
 
   
 
-使用缓冲区和归并排序，降低IO开销
+使用缓冲区和归并排序，降低IO开销，提高Reduce的性能
 
 - Split切片数据一条条记录Map出来得到K V，V由业务逻辑赋值，再会根据K做hash生成分区号P，最终一条记录变为KVP
 - Map得到的KVP集合，经过两次排序，分区有序+key有序，便于形成Reduce的分区
@@ -1794,7 +1804,9 @@ String[] other_args = parser.getRemainingArgs();
 
 ### 客户端
 
-客户端不参与计算（非win本地提交方式），但参与了jar包分发和并行度设置
+<img src="assets/image-20230826152329445.png" alt="image-20230826152329445" style="zoom:67%;" />
+
+客户端不参与计算（非win本地提交方式），但参与了jar包分发（计算向数据移动）和并行度设置
 
 1. 异步执行
 
@@ -1802,13 +1814,228 @@ String[] other_args = parser.getRemainingArgs();
 
    <img src="assets/image-20230825222137297.png" alt="image-20230825222137297" style="zoom:50%;" />
 
-2. 提交程序submit()中的`submitter.submitJobInternal(Job.this, cluster);`，其实现了将Block转成Split输入给MapTask
+   1. 提交程序submit()中的`submitter.submitJobInternal(Job.this, cluster);`和`writeSplits(job, submitJobDir);`，其实现了将Block转成Split输入给MapTask
 
-3. 
+   2. 通过**反射**实例化一个输入格式化类
 
+      ```java
+      InputFormat<?, ?> input = 
+        ReflectionUtils.newInstance(job.getInputFormatClass(), conf);
+      
+      // getInputFormatClass()的实现，默认采用TextInputFormat格式化类
+      public Class<? extends InputFormat<?,?>> getInputFormatClass() 
+           throws ClassNotFoundException {
+          return (Class<? extends InputFormat<?,?>>) 
+            conf.getClass(INPUT_FORMAT_CLASS_ATTR, TextInputFormat.class);
+        }
+      
+      // 使用实例化的input得到Splits
+      List<InputSplit> splits = input.getSplits(job);
+      
+      ```
 
+   2. get_Splits方法实现
+
+      选择父（子）类实现，可以看到由FileInputFormat类实现了getSplits(job)方法![image-20230826123226758](assets/image-20230826123226758.png)
+
+      ![image-20230826123248191](assets/image-20230826123248191.png)
+
+      ```java
+      int maps = writeSplits(job, submitJobDir);
+      
+      // 可以看到将根据配置文件返回，Split切片大小的最小值为1
+      long minSize = Math.max(getFormatMinSplitSize(), getMinSplitSize(job));
+      
+      // 配置项的属性为： 
+        public static final String SPLIT_MINSIZE = 
+          "mapreduce.input.fileinputformat.split.minsize";
+      
+      // 可以通过程序修改配置
+      FileInputFormat.setMinInputSplitSize(job, 111);
+      
+      // 也可以通过-D传参进去
+      
+      //同理可得Split切片大小的最大值为
+      ```
+
+      ⭐️通过读取HDFS中的元数据清单，得到每个数据块信息，根据块大小和切片大小，计算最终要生成的Split大小，将Split信息通过类存放的数组中⭐️
+
+      ```java
+      long splitSize = computeSplitSize(blockSize, minSize, maxSize);
+      
+      protected long computeSplitSize(long blockSize, long minSize,
+                                      long maxSize) {
+        return Math.max(minSize, Math.min(maxSize, blockSize));
+      }
+      
+      // 得到splitSize后计算块编号，从哪个块里取数据
+      int blkIndex = getBlockIndex(blkLocations, length-bytesRemaining);
+      // 进一步确定从哪个块副本中执行Map任务 存放到FileSplit类组成的数组中
+      splits.add(makeSplit(path, length-bytesRemaining, splitSize,
+                  blkLocations[blkIndex].getHosts(),
+                  blkLocations[blkIndex].getCachedHosts()));
+      protected FileSplit makeSplit(Path file, long start, long length, 
+                                  String[] hosts, String[] inMemoryHosts) {
+      	return new FileSplit(file, start, length, hosts, inMemoryHosts);
+      }
+      ```
+
+      - 可以知道默认情况下，切片大小等于块的大小；**调大Split需要minsize调大 调小Split需要maxSize调小**；如果一个Split跨块了，还是会有网络IO开销
+      - 构建Split（FileSplit类）的五个参数，关键是前四个，使计算程序知道了应该去哪些数据存放节点去计算（还没确定）
+        - `file`：表示输入文件的路径（Path）对象。它指定了文件Split**所属的文件**。
+        - `start`：表示文件Split的起始偏移量（offset）。它指定了文件Split在文件中的**起始位置**。
+        - `length`：表示文件Split的长度。它指定了文件Split的**大小**。
+        - `hosts`：表示存储文件Split的各个数据节点（DataNode）的主机名（hostname）数组。它指定了**哪些数据节点存储了该文件Split的副本**。
+        - `inMemoryHosts`：表示将文件Split存储在内存中的数据节点的主机名数组。这是一个可选参数，用于**指定将文件Split存储在内存中的数据节点**。
+      - Splits数组的大小确定了Map任务的并行度
+
+   3. `writeNewSplits()`将Splits转成Array，写入到HDFS中；最终返回Splits数组的长度（并行度），并赋值给`maps`变量
+
+      ```java
+      List<InputSplit> splits = input.getSplits(job);
+      T[] array = (T[]) splits.toArray(new InputSplit[splits.size()]);
+      
+      // sort the splits into order based on size, so that the biggest
+      // go first
+      Arrays.sort(array, new SplitComparator());
+      JobSplitWriter.createSplitFiles(jobSubmitDir, conf, 
+          jobSubmitDir.getFileSystem(conf), array);
+      return array.length;
+      
+      int maps = writeSplits(job, submitJobDir);
+      ```
+
+   4. 提交作业
+
+      ```java
+      status = submitClient.submitJob(
+        jobId, submitJobDir.toString(), job.getCredentials());
+      ```
 
 ### MapTask
+
+在客户端提交作业之前，还设置了Mapper类的run实现方法，其将记录读取方法放在Context变量中，在job提交时会触发记录的读取和MapTask的执行
+
+- Context变量存着不同的对象，从而给不同的任务调用不同的方法，贯穿整个任务的生命周期
+
+1. 客户端开发时，继承框架里的Mapper类并重载了map方法，框架会反射MapTask类，在runNewMapper()函数的的try中运行该方法
+
+   <img src="assets/image-20230826153414177.png" alt="image-20230826153414177" style="zoom:50%;" />
+
+   <img src="assets/image-20230826200808109.png" alt="image-20230826200808109" style="zoom:50%;" />
+
+2. 运行map方法之前，需要通过反射得到Mapper对象，其对应客户端开发时设置的job.setMapperClass()方法
+
+   ```java
+   // make a mapper
+   org.apache.hadoop.mapreduce.Mapper<INKEY,INVALUE,OUTKEY,OUTVALUE> mapper =
+     (org.apache.hadoop.mapreduce.Mapper<INKEY,INVALUE,OUTKEY,OUTVALUE>)
+       ReflectionUtils.newInstance(taskContext.getMapperClass(), job);
+   
+   public Class<? extends Mapper<?,?,?,?>> getMapperClass() 
+        throws ClassNotFoundException {
+       return (Class<? extends Mapper<?,?,?,?>>) 
+         conf.getClass(MAP_CLASS_ATTR, Mapper.class);
+     }
+   ```
+
+   - 同理可以得到输入格式化类（inputFormat）的子类实现默认为TextInputFormat
+
+3. 每个mapper拉取属于自己的Split数据，将数据**转换为一条一条的记录Record**
+
+   ```java
+   split = getSplitDetails(new Path(splitIndex.getSplitLocation()),
+       splitIndex.getStartOffset());
+   org.apache.hadoop.mapreduce.RecordReader<INKEY,INVALUE> input =
+     new NewTrackingRecordReader<INKEY,INVALUE>
+       (split, inputFormat, reporter, taskContext);
+   
+   // RecordReader子类NewTrackingRecordReader构造方法中的createRecordReader()实现的记录读取器
+   this.real = inputFormat.createRecordReader(split, taskContext);
+   // 记录读取器的TextInputFormat子类实现 最终this.real表示的记录读取器为LineRecordReader
+   @Override
+   public RecordReader<LongWritable, Text> 
+   createRecordReader(InputSplit split,
+                      TaskAttemptContext context) {
+   String delimiter = context.getConfiguration().get(
+       "textinputformat.record.delimiter");
+   byte[] recordDelimiterBytes = null;
+   if (null != delimiter)
+     recordDelimiterBytes = delimiter.getBytes(Charsets.UTF_8);
+   return new LineRecordReader(recordDelimiterBytes);
+   }
+   ```
+
+4. 将该记录读取器封装mapperContext中，进行初始化
+
+   ```java
+   input.initialize(split, mapperContext);
+   // NewTrackingRecordReader子类实现的initialize方法将调用LineRecordReader的initialize方法
+   real.initialize(split, context);
+   
+   // 读取Split的要读取Block的信息，通过seek()方法移动到对应的Split数据位置
+   fileIn = fs.open(file);
+   fileIn.seek(start);
+   
+   // 用来处理因为线性分割造成的不连续字符串问题：构造一个SplitLineReader对象in，将存放fileIn，直接多读一行加到当前的Split中，再将该行的偏移量加到start中进一步得到该Split的起始位置this.pos
+   if (start != 0) {
+     start += in.readLine(new Text(), 0, maxBytesToConsume(start));
+   }
+   this.pos = start;
+   ```
+
+   - 由于每次多读了一行，如果跨节点数据块，会产生一点网络开销，但这点对于并行带来的收益来说，开销很少
+
+5. 读一行行记录，交互给客户端的map()业务逻辑代码
+
+   客户端中的mapperContext执行的读取方法都是调用LineRecordReader对应的实现方法
+
+   ```java
+   // key是偏移量 value是一行字符串
+   if (key == null) {
+     key = new LongWritable();
+   }
+   key.set(pos);
+   if (value == null) {
+     value = new Text();
+   }
+   ...
+   ```
+
+   - nextKeyValue()：查看是否有记录返回boll，有则对key value赋值
+   - getCurrentKey(), context.getCurrentValue()，返回赋值的key value
+
+  小结进行MapTask之前的Input(->map->output)
+
+- 指定输入格式化类和构造记录读取器，进行Split数据的拉取和初始化（连续一行记录的生成）
+- 将记录读取器（input变量中）放到对应Context类中，完成一个Split下一条条记录的顺序读取
+  - 重写记录读取方法可以实现两行两行输入给Map方法进行计算
+- Input是通用的，Spark拿到一条条记录数据的实现是一样的
+
+
+
+接下来是由`context.write((KEYOUT) key, (VALUEOUT) value);`，该write方法也是由放到对应Context类中output变量来完成的
+
+```java
+public void write(KEYOUT key, VALUEOUT value
+                    ) throws IOException, InterruptedException {
+    output.write(key, value);
+}
+```
+
+回看output变量的构造
+
+```java
+// get an output object
+if (job.getNumReduceTasks() == 0) {
+  output = 
+    new NewDirectOutputCollector(taskContext, job, umbilical, reporter);
+} else {
+  output = new NewOutputCollector(taskContext, job, umbilical, reporter);
+}
+```
+
+
 
 
 
@@ -1817,6 +2044,10 @@ String[] other_args = parser.getRemainingArgs();
 
 
 
+
+Map和Reduce的完整实现流程图
+
+<img src="assets/7223de9cd5ce445aaeb4fd3a7e4aac70.png" style="zoom:50%;" />
 
 # ZooKeeper 
 
