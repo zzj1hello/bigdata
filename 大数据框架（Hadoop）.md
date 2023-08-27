@@ -1374,9 +1374,11 @@ Reduce
 - 虚线框：Map Task（任务）和Reduce Task（任务）；蓝色矩形：Map 方法和Reduce方法
   - 以一条记录一条记录调用Map方法；以一组记录一组记录调用Reduce方法
 - 分组group、分区partition
-  - Map Task的键值对输出，再根据Hash得到相同值的记录集合，称之为分组
+  - Map Task的键值对输出，再根据Hash得到相同key的记录集合，称之为分组
   - 一个Reduce Task包含一组数据（一个分组）或者多组数据（自己定的并行度有关），称之为分区
-  - **一个分组不会打散到不同分区中**：
+  - **一个分组不会打散到不同分区中**
+  - Reduce的拉取是按照分区，有多少个分区，有多少个ReduceTask
+  - 相同分组的key采用的reduce方法是一样的
 - shuffle：将Map阶段产生的中间数据（key-value对）按照key进行排序和合并的过程
 
 总结MR在干嘛
@@ -1391,7 +1393,7 @@ Reduce
 
 - Split切片数据一条条记录Map出来得到K V，V由业务逻辑赋值，再会根据K做hash生成分区号P，最终一条记录变为KVP
 - Map得到的KVP集合，经过两次排序，分区有序+key有序，便于形成Reduce的分区
-- Reduce接收相同P的记录现成分区，分区内部保证根据K有序，相同的Key做Reduce迭代计算
+- Reduce接收相同P的记录现成分区，分区内部保证根据K有序，**相同的Key做Reduce迭代计算**
 
 <img src="assets/image-20230820113238705.png" alt="image-20230820113238705" style="zoom: 80%;" />
 
@@ -2014,26 +2016,97 @@ String[] other_args = parser.getRemainingArgs();
 
 
 
-接下来是由`context.write((KEYOUT) key, (VALUEOUT) value);`，该write方法也是由放到对应Context类中output变量来完成的
+接下来是由`context.write((KEYOUT) key, (VALUEOUT) value);`，该write方法也是由放到对应Context类中output变量来完成的，即**write方法是由output的构造类完成的**
 
 ```java
+// output传给MapContextImpl实现类，这个类的父类实现了write方法
+mapContext = 
+  new MapContextImpl<INKEY, INVALUE, OUTKEY, OUTVALUE>(job, getTaskID(), 
+      input, output, 
+      committer, 
+      reporter, split);
+super(conf, taskid, writer, committer, reporter);
+this.output = output;
 public void write(KEYOUT key, VALUEOUT value
                     ) throws IOException, InterruptedException {
     output.write(key, value);
 }
 ```
 
-回看output变量的构造
+回看output变量的构造，其中$分区数=Reduce并行度=job.getNumReduceTasks()$，选择该值>1的分支中的output构造
 
-```java
-// get an output object
-if (job.getNumReduceTasks() == 0) {
-  output = 
-    new NewDirectOutputCollector(taskContext, job, umbilical, reporter);
-} else {
-  output = new NewOutputCollector(taskContext, job, umbilical, reporter);
-}
-```
+1. 由K生成分区号P，从而用于write方法
+
+   ```java
+   output = new NewOutputCollector(taskContext, job, umbilical, reporter);
+   
+   // 在构造类NewDirectOutputCollector中找到了write方法 其将调用collector.collect(K,V,P)的实现
+   collector = createSortingCollector(job, reporter);
+   public void write(K key, V value) throws IOException, InterruptedException {
+       collector.collect(key, value, partitioner.getPartition(key, value, partitions));
+   }
+   // 分区号的构造类 默认为HashPartitioner哈希分区器
+   partitioner = (org.apache.hadoop.mapreduce.Partitioner<K,V>)
+     ReflectionUtils.newInstance(jobContext.getPartitionerClass(), job);
+   return (Class<? extends Partitioner<?,?>>) 
+     conf.getClass(PARTITIONER_CLASS_ATTR, HashPartitioner.class);
+   // 哈希分区器的分区号实现方法  位与运算（保证非负）和取模 保证相同的key有相同的分区号
+   public int getPartition(K key, V value,
+                         int numReduceTasks) {
+   	return (key.hashCode() & Integer.MAX_VALUE) % numReduceTasks;
+   }
+   ```
+
+   - 分区数为1个时，默认分区号为0
+
+2. collector对象的构造方法，默认为MapOutputBuffer类
+
+   ```java
+   spillThreadClass<?>[] collectorClasses =
+     JobContext.MAP_OUTPUT_COLLECTOR_CLASS_ATTR, MapOutputBuffer.class);
+   // collector将遍历Class clazz : collectorClasses，构造成collector，并进行初始化
+   MapOutputCollector<KEY, VALUE> collector = ReflectionUtils.newInstance(subclazz, job);
+   collector.init(context);
+   
+   //初始化中定义了溢写率和缓冲区大小
+   final float spillper = job.getFloat(JobContext.MAP_SORT_SPILL_PERCENT, (float)0.8);
+   final int sortmb = job.getInt(JobContext.IO_SORT_MB, 100);
+   
+   // 定义序列号方法，将用于collector.collect(k,v,p)中k v的序列化
+   keySerializer = serializationFactory.getSerializer(keyClass);
+   keySerializer.open(bb);
+   valSerializer = serializationFactory.getSerializer(valClass);
+   valSerializer.open(bb);
+   
+   // 排序算法默认为快排
+   sorter = ReflectionUtils.newInstance(job.getClass("map.sort.class",
+               QuickSort.class, IndexedSorter.class), job);
+   // 排序中要用的比较器
+   comparator = job.getOutputKeyComparator();
+   public RawComparator getOutputKeyComparator() {
+       Class<? extends RawComparator> theClass = getClass(
+         JobContext.KEY_COMPARATOR, null, RawComparator.class);
+       if (theClass != null)
+         return ReflectionUtils.newInstance(theClass, this);
+       return WritableComparator.
+           get(getMapOutputKeyClass().asSubclass(WritableComparable.class), this);
+   }
+   
+   // 由用户决定是否定义combiner：是MapTask中执行的Reduce，其先处理一次本地的Reduce，再把结果传递给ReduceTask取进一步聚合，从而可以减少网络IO的开销
+   minSpillsForCombine = job.getInt(JobContext.MAP_COMBINE_MIN_SPILLS, 3);
+   ```
+
+   - ⭐️80%+100的设置需要手工调整⭐️：其中80%保证能留有20%空间存map出来的东西，又能将80%的数据写满后，通过分区、排序刷到磁盘文件中
+     - 缓冲区中的k,v需要经过**序列化**成字节，放到字节数组（**kvmeta**）中
+     - 开辟16字节存放kv记录的**索引**，由4个4字节组成：分区号、keystart、valstart、vallen，从而可以在字节数组kvmeta中取出每个key和value
+     - 索引也放到原本存放kv的字节数组kvmeta中，将数据（长度不定）和索引（长度固定）存在同一个内存空间，从而提升利用率
+     - 由spillThread溢写线程实现存满80%锁住缓冲区，**在内存缓冲区中进行排序**，再写入磁盘，这样可以减少IO
+       - 涉及20%的剩余空间存放记录和索引的问题：规定赤道，**由中间向两侧存放记录和索引**，从而避免“撞车”，将缓冲区设计成环形数组实现该功能（IntBuffer类实现的kvmeta，本质上还是线性字节数组）
+   - 排序比较器优先使用用户自定义的比较器，其对应客户端开发中指定的配置`job.setMapOutputKeyClass(Text.class);`，如果没有定义将**默认取key这个类型自身的比较器**（如果是Key是文本，比较的是字典序）
+     - kvmeta中溢写前的排序：比较的是key，但**排序的是索引**（长度大小固定），排序移动字节数组中不同长度大小的kv记录，开销较大，从赤道向索引一侧顺序读索引溢写到磁盘，此时的记录是有序的
+     - 排序是二次排序，分区有序（生成ReduceTask）、分区内key有序（一个分组是相同的一次Reduce计算）
+
+   
 
 
 
@@ -2047,7 +2120,7 @@ if (job.getNumReduceTasks() == 0) {
 
 Map和Reduce的完整实现流程图
 
-<img src="assets/7223de9cd5ce445aaeb4fd3a7e4aac70.png" style="zoom:50%;" />
+<img src="assets/7223de9cd5ce445aaeb4fd3a7e4aac70.png" style="zoom: 67%;" />
 
 # ZooKeeper 
 
