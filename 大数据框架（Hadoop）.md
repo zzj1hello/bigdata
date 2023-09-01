@@ -9,13 +9,11 @@ Hadoop生态体系⭐️⭐️⭐️⭐️⭐️
 
 
 
-数据仓库：https://www.bilibili.com/video/BV1YK411f78Z?p=9&spm_id_from=pageDriver&vd_source=89ddf71eb38188bf588f77ea08dd93b4
+
 
 黑马Hadoop实操：https://www.bilibili.com/video/BV1WY4y197g7/?spm_id_from=333.337.search-card.all.click&vd_source=89ddf71eb38188bf588f77ea08dd93b4
 
 马士兵Hadoop+源码：https://www.bilibili.com/video/BV1HG411g71n?p=4&spm_id_from=pageDriver&vd_source=89ddf71eb38188bf588f77ea08dd93b4
-
-马士兵Spark：https://www.bilibili.com/video/BV1Tg411Y7pr?p=1&vd_source=89ddf71eb38188bf588f77ea08dd93b4
 
 
 
@@ -37,7 +35,7 @@ Hadoop生态体系⭐️⭐️⭐️⭐️⭐️
 - 分布式文件系统HDFS
 - 分布式数据库HBase
 - 分布式数据仓库Hive
-- 数据湖Hudi
+- 数据湖Hudi（最完善的数据湖技术）
 - 数据湖Delta lack
 - 数据湖Iceberg
 
@@ -46,6 +44,7 @@ Hadoop生态体系⭐️⭐️⭐️⭐️⭐️
 - 分布式计算框架MapReduce
 - 分布式计算框架Spark  速度十倍于MR
 - 分布式计算框架Flink
+- （storm已经永久退出历史舞台，没人用了）
 
 OLAP生态：
 
@@ -72,7 +71,8 @@ OLAP生态：
 集群调度体系
 
 - 分布式资源调度Yarn
-- 任务流调度oozie
+  - 任务流调度oozie
+
 - 任务流调度Azkaban
 - Airflow
 - 集群管理平台 cloudera Manager
@@ -92,13 +92,13 @@ OLAP生态：
 - 大数据数据挖掘
 - 总体难度，数仓<平台（JAVA）<挖掘
 
-<img src=".\assets\image-20230723211553022.png" alt="image-20230723211553022"  />
+<img src="assets/image-20230723211553022.png" alt="image-20230723211553022"  />
 
-![image-20230723211607724](.\assets\image-20230723211607724.png)
+![image-20230723211607724](assets/image-20230723211607724.png)
 
-![image-20230723211615173](.\assets\image-20230723211615173.png)
+![image-20230723211615173](assets/image-20230723211615173.png)
 
-![image-20230723211620603](.\assets\image-20230723211620603.png)
+![image-20230723211620603](assets/image-20230723211620603.png)
 
 
 
