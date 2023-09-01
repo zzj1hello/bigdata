@@ -1078,6 +1078,8 @@ zookeeper leader选举
 
    - 目录操作：`hdfs dfs -mkdir -p /user/root`，加了-p表示创建多级目录，此时在根目录的root用户下，创建了user目录，没有数据块的大小等信息。注意该root用户是默认用户
 
+   - 查看目录文件：`hdfs dfs -ls -R /user/root`，查看该目录下的文件
+
    - 文件操作：`hdfs dfs -put 本地当前目录文件`，在root用户下创建了一个文件，有数据块大小等信息
 
    - HDFS有用户、权限概念，但HDFS没有创建用户、组的命令，其基于OS在上哪个用户在使用，会报告给HDFS，生成用户和组（信任客户端，默认使用操作系统的用户），并基于OS的用户、组添加方法，进行权限的分配
@@ -1666,6 +1668,8 @@ hadoop jar hadoop-marpreduce-examples-2.6.5.jar wordcount /data/wc/input /data/w
 
   ![image-20230821213952588](assets/image-20230821213952588.png)
 
+  后续可知：在客户端设置`job.setNumReduceTasks(0);`，即可得到只有Map端输出的“m”结果
+
 - 查看输出数据文件 `hdfs dfs -cat part-r-00000`，计算层能把线性切分导致的不完整词，还原回去
 
   ![image-20230821214114950](assets/image-20230821214114950.png)
@@ -1919,10 +1923,13 @@ String[] other_args = parser.getRemainingArgs();
 在客户端提交作业之前，还设置了Mapper类的run实现方法，其将记录读取方法放在Context变量中，在job提交时会触发记录的读取和MapTask的执行
 
 - Context变量存着不同的对象，从而给不同的任务调用不同的方法，贯穿整个任务的生命周期
+- run()方法是框架运行MapTask和ReduceTask的入口
 
-1. 客户端开发时，继承框架里的Mapper类并重载了map方法，框架会反射MapTask类，在runNewMapper()函数的的try中运行该方法
+1. 找到MapTask的run()方法，其中继承框架里的Mapper类并重载了map方法，框架会反射MapTask类，在runNewMapper()函数的的try中运行该方法
 
    <img src="assets/image-20230826153414177.png" alt="image-20230826153414177" style="zoom:50%;" />
+
+   <img src="assets/image-20230828125239728.png" alt="image-20230828125239728" style="zoom:50%;" />
 
    <img src="assets/image-20230826200808109.png" alt="image-20230826200808109" style="zoom:50%;" />
 
@@ -1959,12 +1966,12 @@ String[] other_args = parser.getRemainingArgs();
    public RecordReader<LongWritable, Text> 
    createRecordReader(InputSplit split,
                       TaskAttemptContext context) {
-   String delimiter = context.getConfiguration().get(
-       "textinputformat.record.delimiter");
-   byte[] recordDelimiterBytes = null;
-   if (null != delimiter)
-     recordDelimiterBytes = delimiter.getBytes(Charsets.UTF_8);
-   return new LineRecordReader(recordDelimiterBytes);
+       String delimiter = context.getConfiguration().get(
+           "textinputformat.record.delimiter");
+       byte[] recordDelimiterBytes = null;
+       if (null != delimiter)
+         recordDelimiterBytes = delimiter.getBytes(Charsets.UTF_8);
+       return new LineRecordReader(recordDelimiterBytes);
    }
    ```
 
@@ -1975,7 +1982,7 @@ String[] other_args = parser.getRemainingArgs();
    // NewTrackingRecordReader子类实现的initialize方法将调用LineRecordReader的initialize方法
    real.initialize(split, context);
    
-   // 读取Split的要读取Block的信息，通过seek()方法移动到对应的Split数据位置
+   // 读取Split中Block的信息，通过seek()方法移动到对应的Split数据位置
    fileIn = fs.open(file);
    fileIn.seek(start);
    
@@ -2004,10 +2011,10 @@ String[] other_args = parser.getRemainingArgs();
    ...
    ```
 
-   - nextKeyValue()：查看是否有记录返回boll，有则对key value赋值
+   - nextKeyValue()：查看是否有记录，返回bool，有则对key value赋值
    - getCurrentKey(), context.getCurrentValue()，返回赋值的key value
 
-  小结进行MapTask之前的Input(->map->output)
+  小结进行MapTask之前的**Input**(->map->output)
 
 - 指定输入格式化类和构造记录读取器，进行Split数据的拉取和初始化（连续一行记录的生成）
 - 将记录读取器（input变量中）放到对应Context类中，完成一个Split下一条条记录的顺序读取
@@ -2016,7 +2023,7 @@ String[] other_args = parser.getRemainingArgs();
 
 
 
-接下来是由`context.write((KEYOUT) key, (VALUEOUT) value);`，该write方法也是由放到对应Context类中output变量来完成的，即**write方法是由output的构造类完成的**
+接下来是看(Input->map->)**output**，output由`context.write((KEYOUT) key, (VALUEOUT) value);`，该write方法也是由放到对应Context类中output变量来完成的，即**write方法是由output的构造类完成的**
 
 ```java
 // output传给MapContextImpl实现类，这个类的父类实现了write方法
@@ -2092,35 +2099,333 @@ public void write(KEYOUT key, VALUEOUT value
            get(getMapOutputKeyClass().asSubclass(WritableComparable.class), this);
    }
    
-   // 由用户决定是否定义combiner：是MapTask中执行的Reduce，其先处理一次本地的Reduce，再把结果传递给ReduceTask取进一步聚合，从而可以减少网络IO的开销
+   // 由用户决定是否定义combiner 设置溢写合并的阈值
    minSpillsForCombine = job.getInt(JobContext.MAP_COMBINE_MIN_SPILLS, 3);
    ```
 
    - ⭐️80%+100的设置需要手工调整⭐️：其中80%保证能留有20%空间存map出来的东西，又能将80%的数据写满后，通过分区、排序刷到磁盘文件中
+
      - 缓冲区中的k,v需要经过**序列化**成字节，放到字节数组（**kvmeta**）中
      - 开辟16字节存放kv记录的**索引**，由4个4字节组成：分区号、keystart、valstart、vallen，从而可以在字节数组kvmeta中取出每个key和value
      - 索引也放到原本存放kv的字节数组kvmeta中，将数据（长度不定）和索引（长度固定）存在同一个内存空间，从而提升利用率
      - 由spillThread溢写线程实现存满80%锁住缓冲区，**在内存缓冲区中进行排序**，再写入磁盘，这样可以减少IO
        - 涉及20%的剩余空间存放记录和索引的问题：规定赤道，**由中间向两侧存放记录和索引**，从而避免“撞车”，将缓冲区设计成环形数组实现该功能（IntBuffer类实现的kvmeta，本质上还是线性字节数组）
+
    - 排序比较器优先使用用户自定义的比较器，其对应客户端开发中指定的配置`job.setMapOutputKeyClass(Text.class);`，如果没有定义将**默认取key这个类型自身的比较器**（如果是Key是文本，比较的是字典序）
+
      - kvmeta中溢写前的排序：比较的是key，但**排序的是索引**（长度大小固定），排序移动字节数组中不同长度大小的kv记录，开销较大，从赤道向索引一侧顺序读索引溢写到磁盘，此时的记录是有序的
      - 排序是二次排序，分区有序（生成ReduceTask）、分区内key有序（一个分组是相同的一次Reduce计算）
 
-   
+   - combiner调优：是MapTask中执行的Reduce，其先处理一次本地的Reduce，再把结果传递给ReduceTask取进一步聚合，从而可以减少网络IO的开销
 
+     - 发生在内存溢写前，缓冲区排序后：聚合后刷到磁盘，使溢写的IO会减少
+     - 发生在溢写之后：最终map结束输出过程buffer会溢写出多个小文件（kv记录组成文件），当文件的个数达到3个时，map会把小文件合并，避免小文件的碎片化（碎片化导致磁盘的随机读取，会很慢；合并后只需要顺序读取，会块很多）【小文件合并，像Spark Kalfka ES都把数据在磁盘中顺序存储，读取速度块】
+     - 【**潜在风险**】：计算必须是幂等的，本地combine再统一Reduce，对**求和**操作时幂等的；对**求平均数**操作不幂等，解决方法是对数值和和个数和做两次幂等的求和操作，再Reduce中再统一做除法
+     - [combine使用的客户端代码](https://www.jianshu.com/p/fd44169828ff)
 
+     > 分层解耦能带来兼容性，各干各的，跑多个进程来完成，每块都能改，但需要进程协作、通信、内存磁盘中拷贝读取，速度会比较慢；整合功能，只有一个进程，全在内存中访问数据，速度块
 
 
 
 ### ReduceTask
 
+与Mapper类似，在run()方法中，针对一组记录，进行reduce操作
 
+```java
+public void run(Context context){
+    while (context.nextKey()) {
+        reduce(context.getCurrentKey(), context.getValues(), context);
+        ...}}
+```
 
+查看ReduceTask类的run()方法
 
+![image-20230828124614416](assets/image-20230828124614416.png)
+
+1. shuffle：不同节点MapTask的结果，根据分区号拉取到一个个的ReduceTask中，返回的是每组数据的迭代器，保证放到内存做计算的只是一部分，调用next()去磁盘中读下一批的数据，迭代器其为ReduceTask的input
+
+   ```java
+   rIter = shuffleConsumerPlugin.run();
+   ```
+
+   - merge归并不同节点的Map输出数据，用的排序比较器和MapTask的相同
+
+2. sort：是分组排序，分组排序是在有序的每组记录基础上，按key进行分组，保证Reduce计算的一个迭代内记录是同一组的
+
+   - 如一个迭代记录包含（日期、温度），按照日期做分组排序，得到一个日期下的温度的有序变化情况
+
+   ```java
+   // 定义比较器：优先使用用户定义的，否则默认也为key的排序比较器，key的排序比较器即MapTask中定义的
+   RawComparator comparator = job.getOutputValueGroupingComparator();
+   public RawComparator getOutputValueGroupingComparator() {
+       Class<? extends RawComparator> theClass = getClass(
+         JobContext.GROUP_COMPARATOR_CLASS, null, RawComparator.class);
+       if (theClass == null) {
+         return getOutputKeyComparator();
+       }
+       return ReflectionUtils.newInstance(theClass, this);
+     }
+   ```
+
+   |      | MapTask               | ReduceTask               |
+   | ---- | --------------------- | ------------------------ |
+   | 1    | 用户定义的排序比较器  | 取用户自定义的分组比较器 |
+   | 2    | 取key自身的排序比较器 | 用户定义的排序比较器     |
+   | 3    |                       | 取key自身的排序比较器    |
+
+包装完迭代器和比较器后，进入runNewReducer()方法，在该方法的最后和MapTask的run方法一样，通过反射得到Reduce对象，把相关对象放到Context中，最后调用客户端编写的Reduce对象的run方法
+
+```java
+runNewReducer(job, umbilical, reporter, rIter, comparator, 
+                keyClass, valueClass);
+org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE> reducer =
+  (org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE>)
+    ReflectionUtils.newInstance(taskContext.getReducerClass(), job);
+org.apache.hadoop.mapreduce.Reducer.Context 
+     reducerContext = createReduceContext(reducer, job, getTaskID(),
+                                           rIter, reduceInputKeyCounter, 
+                                           reduceInputValueCounter, 
+                                           trackedRW,
+                                           committer,
+                                           reporter, comparator, keyClass,
+                                           valueClass);
+try {
+  reducer.run(reducerContext);
+} finally {
+  trackedRW.close(reducerContext);
+}
+
+```
+
+createReduceContext方法中返回的是ReduceContextImpl实现类
+
+1. 实现类封装了reduce计算的输入rIter、两个布尔变量hasmore和nextKeyIsSame，对应实现了判断有无记录的`nextKey()`布尔方法，最终是使用的`nextKeyValue()`方法
+
+   ```java
+   // 类的成员变量input在构造函数中声明为rIter 即作为输入的迭代器
+   this.input = rIter
+   
+   // nextKey()开启每组的迭代器
+   while (context.nextKey()) {
+       reduce()
+       ...
+   }
+   public boolean nextKey() throws IOException,InterruptedException {
+     while (hasMore && nextKeyIsSame) {
+       nextKeyValue();
+     }
+     if (hasMore) {
+       if (inputKeyCounter != null) {
+         inputKeyCounter.increment(1);
+       }
+       return nextKeyValue();
+     } else {
+       return false;
+     }
+   }
+   
+   // nextKeyValue()中使用了比较器
+   if (hasMore) {
+     nextKey = input.getKey();
+     nextKeyIsSame = comparator.compare(currentRawKey.getBytes(), 0, 
+                                    currentRawKey.getLength(),
+                                    nextKey.getData(),
+                                    nextKey.getPosition(),
+                                    nextKey.getLength() - nextKey.getPosition()
+                                        ) == 0;
+   } else {
+     nextKeyIsSame = false;
+   }
+   ```
+
+   - `nextKey()`和MapTask的`nextKeyValue()`一样：通过迭代器input取出每条key,value进行赋值，最终返回布尔值表示有无记录
+
+     - getCurrentKey()方法和MapTask的一样
+
+     - getValues()方法和对应MapTask的getCurrentValue()方法不一样，返回的是Iterable对象
+
+       ```java
+       Iterable<VALUEIN> getValues() throws IOException, InterruptedException {
+         return iterable;
+       }
+       ```
+
+   - ReduceTask的`nextKeyValue()`使用比较器，判断当前一行记录的key是否和下一行记录一样，表示是否为一组，更新布尔变量`nextKeyIsSame`用来在做下面的判断
+
+   - nextKey()根据hasmore和nextKeyIsSame在不同组数据中进行迭代，nextKeyValue()会更新nextKeyIsSame变量
+
+2. reduce输入中的`Iterable`和嵌套迭代器`Iterator`
+
+   - 通过调用`getValues()`方法，返回`ValueIterable`，`ValueIterable`对象的`iterator()`方法返回q嵌套迭代器`ValueIterator`
+
+   - 嵌套迭代器`ValueIterator`实现自`Iterator`迭代器接口，有`hasNext()`方法和`next()`方法从`input`的真迭代器中获取每批数据，并通过`getValues()`方法更新`nextKeyIsSame`变量，确保迭代出来的数据都是一组的
+
+     >实现迭代器接口的类对象，只需要在内存中维护指向数据的指针，而不是真正的数据，从而解决内存溢出oom问题
+
+     嵌套迭代器使用`hasNext()`识别`nextKeyIsSame`变量，控制当前一组数据是否是同一组的，是否需要停止嵌套迭代器的迭代，停止后如果`nextKey()`的`hasmore`变量表示还有数据，则会开启新一组的迭代
+
+     ```java
+     // 客户端reduce输入的value 会触发getValues()返回的ValueIterable的next()方法
+     while (context.nextKey()) {
+         for (IntWritable val : context.getValues()) {
+             sum += val.get();
+             ...}}
+     // next方法需要判断hasNext()方法，保证next()出来的是同组数据 
+     public boolean hasNext() {
+         if (inReset && backupStore.hasNext()) {
+               return true;
+             } 
+     	... 
+         return firstValue || nextKeyIsSame;    }}
+     // next方法 若发现不是同组了 直接调用nextKeyValue()方法更新同组判断变量
+     ```
+
+   - 分组数据是顺序有序的，真假迭代器相互协作，将每组数据一次迭代给reduce函数，判断不同组后，换下一次的分组迭代，保证真迭代器一次IO磁盘中的数据，就能读完全部ReduceTask的各组数据
+
+   <img src="assets/image-20230828165813798.png" alt="image-20230828165813798" style="zoom: 67%;" />
+
+   
 
 Map和Reduce的完整实现流程图
 
 <img src="assets/7223de9cd5ce445aaeb4fd3a7e4aac70.png" style="zoom: 67%;" />
+
+# 案例实战
+
+⭐️关键是在MapTask中选择什么key进行分区，从而利用排序，降低MR的复杂度；value的选择是Reduce中需要什么值，就将其加入到value中⭐️
+
+## 案例一 topN：
+
+输出每个月气温最高的两天，一条记录由（年月日 时分秒，地区代号，温度）组成，存在同一天不同温度的数据
+
+1. 考虑需要去重，保留一个日期中的有最高温度的一条记录，MapTask无法去重，因为其拿不到完整的数据，在Reduce中去重还是比较麻烦
+2. 分区器：把年月作为用来**分区的key**，日和温度作为value；
+3. 排序比较器：把年、月、温度作为**排序的key**，且温度倒序
+   - 用字符串的切割性能差-----》需要定义类，并实现序列化和反序列化、排序比较器
+   - 分区时按照年分区会更好，因为最终排序时分区号没起作用，相同年月的还是会放一起
+4. 分组比较器：把年月作为**分组的key**
+5. Reduce输出：一个迭代的分组是有序的，第一条输出一定是最高温度，次高温是日期与第一条不一样的记录的温度value
+6. 再next()迭代中完成任务后，只需要把同组的标志变量`nextKeyIsSame=True`就能让真迭代器一直读到下一组的数据，而不用加载到内存进行无用的计算
+
+<img src="assets/image-20230828203205605.png" alt="image-20230828203205605" style="zoom:50%;" />
+
+代码实现：
+
+1. 需要根据业务逻辑补充以下MR中的步骤：map和要map写入的key value；分区器（多个reduce时有用）；排序、分组比较器；reduce和迭代器的停止判断
+
+2. key类实现`WritableComparable`接口，右键补充实现接口方法的代码；定义变量，右键"Generate"中补充GetSet代码，
+
+3. 构造类型时，实现接口
+
+4. 是选择泛型时，可能要点进去查看继承对象添加什么泛型，并补充实现方法
+
+5. 构造排序和分组比较器时，继承`WritableComparable`类，重载compare方法
+
+   - 且必须要定义构造器，这是因为排序中的比较器实际上直接调用的是字节数组作为入参，需要子类构造器声明成员变量key1，key2
+
+     ```java
+     return comparator.compare(kvbuffer,
+           kvmeta.get(kvi + KEYSTART),
+           kvmeta.get(kvi + VALSTART) - kvmeta.get(kvi + KEYSTART),
+           kvbuffer,
+           kvmeta.get(kvj + KEYSTART),
+           kvmeta.get(kvj + VALSTART) - kvmeta.get(kvj + KEYSTART));
+     
+     public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
+         try {
+           buffer.reset(b1, s1, l1);                   // parse key1
+           key1.readFields(buffer);
+           
+           buffer.reset(b2, s2, l2);                   // parse key2
+           key2.readFields(buffer);
+           
+           buffer.reset(null, 0, 0);                   // clean up reference
+         } catch (IOException e) {
+           throw new RuntimeException(e);
+         }
+         
+         return compare(key1, key2);                   // compare them
+       }
+     ```
+
+   ```java
+   // 1. 重载定义自己的构造器 
+   protected WritableComparator(Class<? extends WritableComparable> keyClass) {
+       this(keyClass, null, false);
+     }
+   
+   // 2. 重载父类的以下compare方法
+   public int compare(WritableComparable a, WritableComparable b) {
+     return a.compareTo(b);
+   }
+   ```
+
+6. reduce方法是实现时，需要对传入的values取出迭代器itr，不断取.next()（调用.nextKeyvalues()更新一组迭代的指针）；可以提前在一个分组迭代中，进行break，外层的.hasKeys()会在while中持续调用.nextKeyvalues()更新指针，直到找到新的一组进行迭代
+
+   ```java
+   while (hasMore && nextKeyIsSame) {
+         nextKeyValue();
+       }
+   ```
+
+## 案例二 topN+join
+
+在案例一基础上考虑使用城市表的文件（存放城市代码和城市名称记录，也可以叫做右表），输出每个月温度最高两天的城市名
+
+- 方法一，在Map端join：在input(->map->output)阶段读取输入文件数据时，切割出城市代码，将其直接转换为城市名
+  - 可以将城市表文件存到HDFS中，在MapTask拉取阶段，分发到不同计算节点中，在本地IO读取文件
+  - 城市表若使用数据库存储，采用JDBC连接进行查询返回
+  - 该方法需要保证城市表的记录数不多，否则不如分布式并行方法来的高效
+
+- 方法二，在Reduce端join：
+
+  - 将原来的数据和城市表数据合并成一个文件，设置统一对城市代码作为分区的key，温度日期等其他信息要作为value，再输入到Reduce端
+  - 因为在Reduce端要将城市代码，城市名称join给原始数据记录，因此在value处额外标记出来
+
+  ![image-20230829233419109](assets/image-20230829233419109.png)
+
+方法一代码实现（只支持集群运行方式）：
+
+1. 将右表上传至HDFS `hdfs dfs -put dict.txt /data/input/dict.txt `
+
+2. 客户端输入右表文件路径，框架**需要基于HDFS层**，将该文件分发到启动MapTask的节点上
+
+   ```java
+   // conf.set("mapreduce.framework.name", "local");
+   job.setJar("jar包位置");
+   job.setCacheFiles(new URI[]{new Path("/data/input/dict.txt").toUri()});
+   ```
+
+3. 重载MapTask的setup()方法，将右表文件在本地读取
+
+4. Key类中存放城市名称变量，并添加序列化反序列化
+
+5. map函数增加城市键值映射
+
+6. reduce的key加入打印城市的字符串
+
+7. 生成jar包，1 2提交方式运行程序
+
+   <img src="assets/image-20230831135711137.png" alt="image-20230831135711137" style="zoom: 67%;" />
+
+## 案例三 好友推荐
+
+本案例是演示使用MapReduce的数据处理加工的**意识**；上面的两个案例主要是**API的使用**
+
+人物关系图，数据记录为，"老师 其相邻老师"
+
+<img src="assets/image-20230901105737312.png" alt="image-20230901105737312" style="zoom:50%;" />
+
+代码实现：
+
+1. 将一条记录，map可输出两类KV，分别表示“直接关系”和“间接关系”，并分别赋V为0和1（也能当做标志），表示间接关系的数量，用以在Reduce端统计
+   - 直接关系为相邻节点，间接关系由一级邻居节点两两组成
+   - 两节点组成的关系存在顺序，统一按照字典序顺序组成K，使reduce能有效聚合
+2. reduce函数对输入分组，只需判断间接关系的K与直接关系的K是否相同，相同则说明这条间接关系不存在，否则将其返回，reduce的val将表示该间接关系的出现次数（由输入的kval累加得到）
+
+![image-20230901110142716](assets/image-20230901110142716.png)
+
+- 最终可以将间接关系数最多进行推荐
 
 # ZooKeeper 
 
