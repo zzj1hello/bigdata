@@ -19,7 +19,7 @@ public class TestHDFS {
         fs = FileSystem.get(conf);  // 会报个异常 把异常抛出去  父类引用会指向一个子类实现
         
         //或者自己指定用户和文件系统
-        fs = FileSystem.get(URI.create("hdfs://mycluster"), conf, "god";
+        fs = FileSystem.get(URI.create("hdfs://mycluster"), conf, "god");
 
     }
 
