@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="41a54a61-b88c-4d74-9364-eb2e3abc48e0" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/../bigdata.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../code/code.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/dataSources.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/deployment.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/pyspark.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/DF-UDF.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/DataFrame.ipynb" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/accumulator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/broadcast-accumulator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/cache.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/cat-beijing.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/longestOnes.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/movie-analysis.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mysql-connector-j-8.1.0.zip" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/py4j-0.10.9.7.tar.gz" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/pyspark-3.4.1.tar.gz" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/rdd_operator.ipynb" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sale-analysis.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/seach_words.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sparkonhive.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/sw_dependency.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/window-function.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/wordcount-sparksql.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/wordcount.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/SogouQ.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/accumulator_broadcast_data.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/apache.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/mini.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/minimini.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/order.text" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/hello_world.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/people.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/people.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/people.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/stu_score.avi" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/stu_score.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/stu_score_2.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/u.data" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/user.avsc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/users.avro" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/users.orc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/sql/users.parquet" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/stu_info.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/stu_score.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/tiny_files/1.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/tiny_files/2.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/tiny_files/3.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/tiny_files/4.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/tiny_files/5.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/测试数据/words.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.obsidian/core-plugins-migration.json" beforeDir="false" afterPath="$PROJECT_DIR$/../.obsidian/core-plugins-migration.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.obsidian/workspace.json" beforeDir="false" afterPath="$PROJECT_DIR$/../.obsidian/workspace.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/hdfs/TestHDFS.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/Fof/FofMapper.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/Fof/FofReducer.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/Fof/MyFof.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/MyTopN.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNGroupingComparator.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNKey.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNMapper.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNPartitioner.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNReducer.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/topn/TopNSortComparator.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/wc/MyMapper.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/wc/MyReducer.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/wc/myWordCount.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hadoop-code/mapreduce/wc/str_itr.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../大数据框架（Hadoop）.md" beforeDir="false" afterPath="$PROJECT_DIR$/../大数据框架（Hadoop）.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../实时数据处理（Spark-streaming&amp;Flink）.md" beforeDir="false" afterPath="$PROJECT_DIR$/../实时数据处理（Spark-streaming&amp;Flink）.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../数据仓库建模.md" beforeDir="false" afterPath="$PROJECT_DIR$/../数据仓库建模.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../离线数据处理（Hive&amp;Spark）.md" beforeDir="false" afterPath="$PROJECT_DIR$/../离线数据处理（Hive&amp;Spark）.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../算法笔试.md" beforeDir="false" afterPath="$PROJECT_DIR$/../算法笔试.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../计算机基础知识.md" beforeDir="false" afterPath="$PROJECT_DIR$/../计算机基础知识.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../语言基础.md" beforeDir="false" afterPath="$PROJECT_DIR$/../语言基础.md" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "customColor": "",
+  "associatedIndex": 4
+}]]></component>
+  <component name="ProjectId" id="2XhYWYs6xwSFH6MAyEWUC4M92fl" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "true",
+    "last_opened_file_path": "C:/Users/lenovo/AppData/Roaming/JetBrains/PyCharm2023.2/jdbc-drivers/Hive/hadoop-nfs-3.3.6.jar",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "vue.rearranger.settings.migration": "true"
+  },
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "mysql",
+      "spark",
+      "hive"
+    ]
+  }
+}]]></component>
+  <component name="RunManager" selected="Python.sparkonhive">
+    <configuration name="sparkonhive" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="pyspark" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/sparkonhive.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="wordcount" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="pyspark" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/wordcount.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.sparkonhive" />
+        <item itemvalue="Python.wordcount" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="41a54a61-b88c-4d74-9364-eb2e3abc48e0" name="Changes" comment="" />
+      <created>1699082812886</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1699082812886</updated>
+      <workItem from="1699082815102" duration="20188000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/pyspark$sparkonhive.coverage" NAME="sparkonhive Coverage Results" MODIFIED="1699083635440" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/pyspark$wordcount.coverage" NAME="wordcount Coverage Results" MODIFIED="1699083401923" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+</project>

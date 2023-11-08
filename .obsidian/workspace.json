@@ -14,8 +14,29 @@
               "type": "empty",
               "state": {}
             }
+          },
+          {
+            "id": "4abb4d09e58e0bf2",
+            "type": "leaf",
+            "state": {
+              "type": "release-notes",
+              "state": {
+                "currentVersion": "1.4.13"
+              }
+            }
+          },
+          {
+            "id": "aab602f0d72eee4e",
+            "type": "leaf",
+            "state": {
+              "type": "release-notes",
+              "state": {
+                "currentVersion": "1.4.14"
+              }
+            }
           }
-        ]
+        ],
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -138,6 +159,18 @@
       "command-palette:打开命令面板": false
     }
   },
-  "active": "b4104969ec8a64d6",
-  "lastOpenFiles": []
+  "active": "aab602f0d72eee4e",
+  "lastOpenFiles": [
+    "assets/image-20231001233823577.png",
+    "assets/image-20231001233819123.png",
+    "assets/image-20231001223229114.png",
+    "assets/image-20231001215333671.png",
+    "assets/image-20231001212946842.png",
+    "assets/image-20231001211550763.png",
+    "assets/image-20231001134240803.png",
+    "assets/image-20231001134225567.png",
+    "assets/image-20230930222947688.png",
+    "assets/image-20230930210500952.png",
+    "assets/image-20230930205453846.png"
+  ]
 }

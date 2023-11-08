@@ -391,7 +391,7 @@ vi /etc/hosts
 	
 # 关闭防火墙 并禁止服务在系统启动时自动启动（systemctl或chkconfig）
 service iptables stop
-systemctl iptabels off
+systemctl iptables off
 # 关闭selinux
 vi /etc/selinux/config
 	SELINUX=disable
@@ -441,8 +441,12 @@ vi hadoop_env.sh # 默认配置为取环境变量${JAVA_HOME} 这在另一台机
 > 免密登陆：
 >
 > - 机器A的.ssh/authorized_keys文件有了机器B的公钥 A就能免密ssh登录B（满足自己免密登自己）
+>
 > - 公钥是由私钥生成的，但是无法从公钥中推导出私钥。**公钥用于加密**从客户端发送到服务器的数据。而**私钥则用于解密这些数据**。这意味着只有持有正确的私钥的用户才能解密通过公钥加密的数据。
+>
 > - 身份验证：在免密登录过程中，你需要将你的公钥提供给需要免密登录的机器，以便在身份验证过程中使用。当你尝试连接到远程机器时，**远程机器会比对你提供的公钥和已经存储在其上的公钥。如果两者匹配，那么你就可以成功进行免密登录。**
+>
+>   ![image-20230923150700025](assets/image-20230923150700025.png)
 >
 > 权限设置
 >
@@ -534,8 +538,9 @@ vi slaves # 设置DataNode DN在哪
 
 ### HDFS启动
 
-1. Format the filesystem：执行/bin目录下的hdfs程序，`hdfs namenode -format`，成功执行下只需要格式化一次
-
+1. 创建FI和data存储目录 `mkdir -p /var/bigdata/hadoop/local/dfs/name和data`
+2. 赋权 `sudo chown ubuntu /var/bigdata/hadoop ` ，否则初始化时无法创建子目录
+3. Format the filesystem：执行/bin目录下的hdfs程序，`hdfs namenode -format`，成功执行下只需要格式化一次
    - **创建NN的数据存放目录name**
 
    - 初始化一个空的FI
@@ -626,7 +631,45 @@ hdfs dfs + <-命令>，在HDFS中**创建用户数据文件**，在而不是单�
        - 其他机器同理，就可以完成node01免密登录其他机器
        - 使用scp时，若路径相同可以简写为 scp id_rsa.pub node02:\`pwd\`/node01.pub
 
-2. 在 $HADOOP_HOME/etc/hadoop中配置 在哪启动角色，角色数据的保存地址
+   - **注：**[可使用rsync，替换scp命令，编写shell脚本，自动完成集群分发](https://blog.csdn.net/weixin_41399650/article/details/125347570)
+
+     ```shell
+     #!/bin/bash
+     
+     #1.判断参数个数
+     if [ $# -lt 1 ]
+     then
+         echo Not Enough Arguement!
+         exit;
+     fi
+     
+     #2.遍历集群所有机器   请改成你自己的主机映射
+     for host in node01 node02 node03
+     do
+         echo =============== $host ==================
+         #3.遍历所有目录，挨个发送
+         for file in $@
+         do
+             #4.判断文件是否存在
+             if [ -e $file ]
+                 then
+     		    #5.获取父目录
+                 pdir=$(cd -P $(dirname $file); pwd)
+     		    fname=$(basename $file)
+     		    # 创建文件夹和传输文件。请改成你自己的端口号
+     		    ssh -p 32200 $host "mkdir -p $pdir"
+     		    rsync -av -e 'ssh -p 32200' $pdir/$fname $host:$pdir
+     	    else
+     		    echo $file does not exists!
+     	    fi
+         done
+     done
+     
+     ```
+
+     
+
+2. 在 HADOOP_HOME/etc/hadoop中配置 在哪启动角色，角色数据的保存地址
 
    - 可以将伪分布式的配置做个拷贝，`cp hadoop hadoop-local`，运行start-dfs.sh执行程序，将默认进入/etc/hadoop目录下读取配置，可以只是做个备份
 
@@ -831,9 +874,9 @@ zkServer.sh start
 # 修改HADOOP配置
 cd $HADOOP_HOME
 cd etc 
-## core_site.xml配置
+## core-site.xml配置
 cd hadoop
-vi core_site.xml 
+vi core-site.xml 
     <configuration>
         <property>
             <name>fs.defaultFS</name> # 将物理主机名改为hdfs中指定的集群逻辑地址mycluster（会自动解析成主机）
@@ -845,8 +888,8 @@ vi core_site.xml
             <value>node02:2181,node03:2181,node04:2181</value>
         </property>
     </configuration>
-## hdfs_site.xml配置
-vi hdfs_site.xml
+## hdfs-site.xml配置
+vi hdfs-site.xml
     <configuration>
         <property> 
             <name>dfs.replication</name>
@@ -1347,7 +1390,7 @@ Reduce：以**一组记录**为单位做计算，因此要根据相同特征**ke
 
 <img src="assets/image-20230819175736532.png" alt="image-20230819175736532" style="zoom:50%;" />
 
-- 数据集是Spark中显示的概念（RDD），MR没有
+- 数据集是Spark中显式的概念（RDD），MR没有
 
 <img src="assets/image-20230819221214544.png" alt="image-20230819221214544" style="zoom:67%;" />
 
@@ -1529,6 +1572,20 @@ yarn-site.xml
         <name>yarn.nodemanager.aux-services</name> 
         <value>mapreduce_shuffle</value>
     </property>
+    
+    <property>
+        <name>yarn.app.mapreduce.am.env</name>
+        <value>HADOOP_MAPRED_HOME=黏贴hadoop classpath</value>
+    </property>
+    <property>
+        <name>mapreduce.map.env</name>
+        <value>HADOOP_MAPRED_HOME=黏贴hadoop classpath</value>
+    </property>
+    <property>
+        <name>mapreduce.reduce.env</name>
+        <value>HADOOP_MAPRED_HOME=黏贴hadoop classpath</value>
+    </property>
+
     
     <property>
       <name>yarn.resourcemanager.ha.enabled</name>
@@ -2440,3 +2497,8 @@ Map和Reduce的完整实现流程图
    2. **临时节点**: 临时节点是在客户端会话存在期间存在的节点。当客户端会话结束时，临时节点将被自动删除。临时节点通常用于临时状态或临时任务的标记。
    3. **顺序节点**: 顺序节点是在节点路径的末尾自动追加一个唯一的递增序列号的节点。顺序节点的创建顺序由 ZooKeeper 服务器保证。顺序节点的序列号使得节点的创建顺序可预测，有助于实现分布式协调和队列等功能。
 
+
+
+# sqoop
+
+[兼容hadoop3.3 配置](https://www.cnblogs.com/Live-up-to-your-youth/p/17278233.html)
