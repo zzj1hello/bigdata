@@ -1,0 +1,19 @@
+# oracle connect info
+[OracleConn]
+oracleHost=oracle.bigdata.cn
+oraclePort=1521
+oracleSID=helowin
+oracleUName=ciss
+oraclePassWord=123456
+# spark thrift connect info
+[SparkConnHive]
+sparkHiveHost=113.31.116.219
+sparkHivePort=10000
+sparkHiveUName=zzjian
+sparkHivePassWord=Aa666666
+# hive thrift connect info
+[HiveConn]
+hiveHost=113.31.116.219
+hivePort=10001
+hiveUName=zzjian
+hivePassWord=Aa666666

@@ -1293,7 +1293,10 @@
       <Current>1</Current>
       <Location>hdfs://localhost:9000/user/hive/warehouse</Location>
     </schema>
-    <table id="263" parent="262" name="sparkonhive">
+    <schema id="263" parent="1" name="sql_practice">
+      <Location>hdfs://localhost:9000/user/hive/warehouse/sql_practice.db</Location>
+    </schema>
+    <table id="264" parent="262" name="sparkonhive">
       <InputFormat>org.apache.hadoop.mapred.TextInputFormat</InputFormat>
       <Location>hdfs://localhost:9000/user/hive/warehouse/sparkonhive</Location>
       <OutputFormat>org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat</OutputFormat>
@@ -1303,9 +1306,151 @@ spark.sql.sources.schema
 {\\&quot;type\\&quot;:\\&quot;struct\\&quot;,\\&quot;fields\\&quot;:[{\\&quot;name\\&quot;:\\&quot;id\\&quot;,\\&quot;type\\&quot;:\\&quot;integer\\&quot;,\\&quot;nullable\\&quot;:true,\\&quot;metadata\\&quot;:{}}]}</Properties>
       <RowFormatSerde>org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe</RowFormatSerde>
     </table>
-    <column id="264" parent="263" name="id">
+    <table id="265" parent="263" name="category_info">
+      <Comment>???</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <table id="266" parent="263" name="order_detail">
+      <Comment>?????</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <table id="267" parent="263" name="order_info">
+      <Comment>???</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <table id="268" parent="263" name="sku_info">
+      <Comment>?????</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <table id="269" parent="263" name="user_info">
+      <Comment>?????</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <table id="270" parent="263" name="user_login_detail">
+      <Comment>???????</Comment>
+      <Temporary>1</Temporary>
+    </table>
+    <column id="271" parent="264" name="id">
       <DasType>int|4s</DasType>
       <Position>1</Position>
+    </column>
+    <column id="272" parent="265" name="category_id">
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="273" parent="265" name="category_name">
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="274" parent="266" name="order_detail_id">
+      <Comment>????id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="275" parent="266" name="order_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="276" parent="266" name="sku_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>3</Position>
+    </column>
+    <column id="277" parent="266" name="create_date">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>4</Position>
+    </column>
+    <column id="278" parent="266" name="price">
+      <Comment>????????</Comment>
+      <DasType>decimal(16,2)|3s</DasType>
+      <Position>5</Position>
+    </column>
+    <column id="279" parent="266" name="sku_num">
+      <Comment>??????</Comment>
+      <DasType>int|4s</DasType>
+      <Position>6</Position>
+    </column>
+    <column id="280" parent="267" name="order_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="281" parent="267" name="user_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="282" parent="267" name="create_date">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>3</Position>
+    </column>
+    <column id="283" parent="267" name="total_amount">
+      <Comment>?????</Comment>
+      <DasType>decimal(16,2)|3s</DasType>
+      <Position>4</Position>
+    </column>
+    <column id="284" parent="268" name="sku_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="285" parent="268" name="name">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="286" parent="268" name="category_id">
+      <Comment>????id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>3</Position>
+    </column>
+    <column id="287" parent="268" name="from_date">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>4</Position>
+    </column>
+    <column id="288" parent="268" name="price">
+      <Comment>????</Comment>
+      <DasType>double|8s</DasType>
+      <Position>5</Position>
+    </column>
+    <column id="289" parent="269" name="user_id">
+      <Comment>?? id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="290" parent="269" name="gender">
+      <Comment>??</Comment>
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="291" parent="269" name="birthday">
+      <Comment>??</Comment>
+      <DasType>string|12s</DasType>
+      <Position>3</Position>
+    </column>
+    <column id="292" parent="270" name="user_id">
+      <Comment>??id</Comment>
+      <DasType>string|12s</DasType>
+      <Position>1</Position>
+    </column>
+    <column id="293" parent="270" name="ip_address">
+      <Comment>ip??</Comment>
+      <DasType>string|12s</DasType>
+      <Position>2</Position>
+    </column>
+    <column id="294" parent="270" name="login_ts">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>3</Position>
+    </column>
+    <column id="295" parent="270" name="logout_ts">
+      <Comment>????</Comment>
+      <DasType>string|12s</DasType>
+      <Position>4</Position>
     </column>
   </database-model>
 </dataSource>

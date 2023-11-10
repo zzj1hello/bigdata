@@ -3,3 +3,5 @@
 */.obsidian/
 */.idea/
 *.json
+./pyspark/create_hive_table/
+./dw/

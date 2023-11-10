@@ -3,6 +3,8 @@ import string
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
+import findspark
+findspark.init()
 
 spark = SparkSession.builder.appName('udf').master('local[3]').getOrCreate()
 sc = spark.sparkContext
@@ -19,7 +21,7 @@ udf_1 = spark.udf.register('udf1', func, IntegerType())
 df.selectExpr("udf1(num)").show()  # SQL风格：对num列施加函数udf1
 df.select(udf_1(df['num'])).show() # DSL风格：使用udf_1 UDF变量
 
-# 只用于DFL风格的UDF，只返回UDF对象变量
+# 只用于DSL风格的UDF，只返回UDF对象变量
 udf_2 = F.udf(func, IntegerType())
 df.select(udf_2('num')).show()
 

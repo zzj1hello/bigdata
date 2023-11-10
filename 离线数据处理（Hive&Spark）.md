@@ -826,6 +826,22 @@ struct_type = StructType().add('id', IntegerType(), False).
 
   > 输入的Column对象也可以直接为列名
 
+- 窗口函数 `from pyspark.sql.window import Window`
+
+  1. 定义窗口函数的分组排序 
+
+     `windowSpec = Window.partitionBy(分区列).orderBy(F.desc(排序列)`
+
+  2. 定义窗口函数的赋值函数 （赋值分区排序后数据当前行的列值）
+
+     `df.withColumn(新列名,F.赋值函数.over(windowSpec))`
+
+     - 赋值当前行**指定某列**的前/后第x行的列值：`F.lag(列, x) / F.lead(列, x)`
+     - F.rank() F.row_rank() F.dense_rank() **F.percent_rank() 表示各行分位数**
+     - 分桶序号，均匀分层x个桶 `F.ntile(x)`
+
+     
+
 SQL风格：
 
 - 创建临时表或全局表（相当于关系数据表）
@@ -856,7 +872,7 @@ DF的数据处理、写入等API
   1. `spark.udf.register(名字, 函数, 返回类型)`，可用于SQL和DSL风格
   2. `F.udf(函数, 返回类型)`，可用于DSL风格
 - UDAF ：聚合函数，输入多个值（一列），返回一个结果值
-  - Pyspark实现的SparkSQL不支持，**只能通过DF-》RDD，再有RDD算子实现**
+  - Pyspark实现的SparkSQL不支持，**只能通过DF-》RDD，再由RDD算子实现**
 - UDTF（Table-generating）：输入一个值，输出多个值（一列多行）
 
 ![image-20231022222015002](assets/image-20231022222015002.png)
@@ -938,7 +954,7 @@ SparkOnHive：借助Hive的metastore，不用再基于DF创建视图，可以直
 
     - 后台启动hive的metastore服务（默认9083端口）：`nohup bin/hive --service metastore 2>&1 >> /var/export/hive/ metastore.log & ` 
 
-  - 也可以后台启动hive的Thrift服务（默认10000端口）：`nohup bin/hiveserver2 --hiveconf hive.server2.thrift.port 10001 2>&1 >> /var/export/hive/hive.log & `，用于客户端连接Hive数据库，查看表的信息（因为连接sparkSQL数据库是看不到表的）
+  - 也可以后台启动hive的Thrift服务（默认10000端口）：`nohup bin/hiveserver2 --hiveconf hive.server2.thrift.port 10001 2>&1 >> /var/export/hive/hive.log & `，用于客户端连接Hive数据库，查看表的信息
 
     >bin/hiveserver2 等价于  bin/hive --service hiveserver2 
 
@@ -979,13 +995,48 @@ SparkOnHive：借助Hive的metastore，不用再基于DF创建视图，可以直
 > 2. **启动ThriftServer，类似Hive的HiveServer2**
 >    1. PyHive：Python连接SparkSQL服务端，提交SQL语句
 >    2. JDBC：JAVA连接SparkSQL服务端
->    3. spark-sql -f ，运行SQL文件， 类似hive -f
+>    3. spark-sql -f + .sql或者.hql文件 ，用以运行SQL文件， 类似hive -f
 >    4. $SPARK_HOME/beeline：交互式命令行，一般用于测试
 >
 > 踩坑：
 > 
 > - 两处配置，hive/conf/hive-site.xml和spark/conf/hive-site.xml中的 `hive.server2.thrift.port` `hive.server2.thrift.bind.host`  一个10000，一个10001，客户端工具使用jdbc拒绝连接spark
 > - 将两处端口设置都删除，启动`/spark/sbin/start-thriftserver.sh`，客户端jdbc能连成功，但` --hiveconfig hive.server2.thrift.port` 设置端口无效，默认就是10000端口，只能额外在spark的hive-site.xml中设置成其他端口（保证一个默认10000，一个配成其他端口，可同时连接两个数据库）
+
+### 调优
+
+1. 窗口函数不指定分区导致的警告 *No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance*
+   - 看看能否不用窗口函数
+   - 权衡扩大或缩小分区数/并行度，带来的Shuffle网络传输和性能提升
+
+2. AQE
+
+   - 开启AQE`spark.sql.adaptive.enabled=true`，自动进行**动态合并shuffle分区，处理数据倾斜；小表join自动转广播join策略；shufflejoin中的动态增加分区，处理数据倾斜**
+
+   - 包含了 `set spark.sql.autoBroadcastJoinThreshold`;大表 JOIN 小表，小表做广播的阈值（默认10Mb，表示小表的大小）
+
+     - 集群内存和网络带宽较好，并且连接的小表的大小较大，可以适当增加阈值（很大的阈值，可以表示禁用广播），以便更多的表可以被广播连接；否则减小阈值
+
+       `spark.conf.set("spark.sql.autoBroadcastJoinThreshold", "100m")`
+
+   - 动态分区调整：自动剪裁分区数据、处理分区数据倾斜
+
+     ```shell
+     set hive.exec.dynamic.partition=true; // 是否允许动态生成分区
+     set hive.exec.dynamic.partition.mode=nonstrict; // 是否容忍指定分区全部动态生成
+     set hive.exec.max.dynamic.partitions = 100; // 动态生成的最多分区数
+     ```
+
+3. executor能力
+
+   ```shell
+   set spark.executor.memory; // executor用于缓存数据、代码执行的堆内存以及JVM运行时需要的内存
+   set spark.yarn.executor.memoryOverhead; //Spark运行还需要一些堆外内存，直接向系统申请，如数据传输时的netty等。
+   set spark.sql.windowExec.buffer.spill.threshold; //当用户的SQL中包含窗口函数时，并不会把一个窗口中的所有数据全部读进内存，而是维护一个缓存池，当池中的数据条数大于该参数表示的阈值时，spark将数据写到磁盘
+   set spark.executor.cores; //单个executor上可以同时运行的task数
+   ```
+
+   
 
 ## Shuffle
 
@@ -1045,7 +1096,7 @@ DAGScheduler的执行计划可能不理想，因为存在不准确的数据统�
 - 读入的数据量
 - 网络IO成本
 
-使用AQE（自适应查询执行）在运行过程中调整执行计划，动态优化，包括**动态合并shuffle 分区、动态调整join策略、动态优化倾斜**
+使用AQE（自适应查询执行）在运行过程中调整执行计划，动态优化，包括**动态合并shuffle 分区；小表join自动转广播join策略；shufflejoin中的动态增加分区，处理数据倾斜**
 
 动态合并shuffle分区
 
@@ -1064,7 +1115,7 @@ DAGScheduler的执行计划可能不理想，因为存在不准确的数据统�
     </tr>
   </table>
 
-动态调整Join策略
+动态调整join策略
 
 - 动机：join过程中，发现经过Catalyst处理后（各种行列裁剪），实际上需要join的表是个小表，数据量很少
 - 解决方法：将小表作为广播变量，执行广播BroadCastHashJoin 操作
@@ -1315,8 +1366,8 @@ CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [db_name.]table_name(
 [PARTITIONED BY (col_name data_type ...)]
 [CLUSTERED BY (col_name...) [SORTED BY (col_name ...)] INTO N BUCKETS]
 [ROW FORMAT row_format] 
-	row format delimited fields terminated by
-	lines terminated by
+    row format delimited fields terminated by 'XX'
+    lines terminated by 'XX'
 [STORED AS file_format]
 [LOCATION hdfs_path]
 TBLPROPERTIES
@@ -1336,7 +1387,16 @@ TBLPROPERTIES
   - 默认：/user/hive/warehouse/数据库名/表名
 - `tblproperties`：指定一些表的额外特殊配置属性
 
+Hive的插入语句
 
+```hive
+insert [overwrite] [into] table user_info
+values ('101', '男', '1990-01-01'),
+       ('102', '女', '1991-02-01'),
+```
+
+- `overwrite` 表示先清空再追加，而不是直接追加 ；`into` 表示直接追加
+- `values` 后接一条条的记录，也可以是 `select` 的结果
 
 ## Hive源码编译
 
