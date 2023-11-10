@@ -10,7 +10,7 @@
     </schema>
     <schema id="3" parent="1" name="global_temp"/>
     <schema id="4" parent="1" name="sql_practice">
-      <LocalIntrospectionTimestamp>2023-11-08.12:32:19</LocalIntrospectionTimestamp>
+      <LocalIntrospectionTimestamp>2023-11-10.15:13:21</LocalIntrospectionTimestamp>
     </schema>
     <routine id="5" parent="2" name="!"/>
     <routine id="6" parent="2" name="%"/>
