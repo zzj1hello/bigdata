@@ -1,6 +1,9 @@
 import collections
 
 from pyspark.sql import SparkSession
+import pyspark.sql.functions as F
+from pyspark.sql.window import Window
+
 import findspark
 findspark.init()
 import time
@@ -14,8 +17,9 @@ spark = SparkSession.builder.master('local[*]').appName('dsl-query')\
 
 sc = spark.sparkContext
 
-start = time.time()
+# start = time.time()
 order_info = spark.read.table("sql_practice.order_info")
+start = time.time()
 # pyspark的UDAF要.repartition(1) 还是牺牲了并行度
 order_info_rdd = order_info.select(['user_id', 'create_date']).rdd.map(lambda x: (x[0], x[1])).repartition(1)
 # .map(lambda x: (x[0], x[1])).partitionBy(10, lambda x: x[0]).take(5)
@@ -63,42 +67,53 @@ def group_agg(itr):
 # pyspark 无论什么ide都没法在rdd的自定义函数里头debug 可以采样先试试函数能不能行
 # lst = order_info_rdd.take(20)
 # print(group_agg(lst))
-print(order_info_rdd.mapPartitions(group_agg).collect())
+# print(order_info_rdd.mapPartitions(group_agg).collect())
 
 end = time.time()
-print(f"DSL耗时：{round((end-start), 2)}")
+print(f"DSL-mine耗时：{round((end-start), 3)}")
 
+start = time.time()
+window = Window.partitionBy('user_id').orderBy('create_date')
+order_rk = order_info.groupBy(['user_id', 'create_date']).agg(F.rank().over(window).alias('flag'))
+order_res = order_rk.withColumn('flag', F.date_sub(order_rk.create_date, order_rk.flag))
+order_res = order_res.groupBy(['user_id', 'flag']).count().where('count(flag)>=3').select('user_id').distinct()
+order_res.show()
+
+end = time.time()
+print(f"DSL-standard耗时：{round((end-start), 3)}")
 
 start = time.time()
 # order_info.createTempView('order_info')
 spark.sql("""
     select distinct user_id
-    from (
-             select user_id
-             from (
-                      select user_id
-                           , create_date
-                           , date_sub(create_date, row_number() over (partition by user_id order by create_date)) flag
-                      from (
-                               select user_id
-                                    , create_date
-                               from sql_practice.order_info
-                               group by user_id, create_date
-                           ) t1 -- 同一天可能多个用户下单，进行去重
-                  ) t2 -- 判断一串日期是否连续：若连续，用这个日期减去它的排名，会得到一个相同的结果
-             group by user_id, flag
-             having count(flag) >= 3 -- 连续下单大于等于三天
-         ) t3;
+    from(
+    
+          select user_id
+               , create_date
+                -- 关键的flag计算：使用date_sub(日期, 减去的差值) 得到的flag相同表示连续 再按照flag分组判断个数是否满足条件即可
+               , date_sub(create_date, row_number() over (partition by user_id order by create_date)) flag
+          from (
+                   select user_id
+                        , create_date
+                   from sql_practice.order_info -- sql_practice.
+                   group by user_id, create_date -- groupby会自动去重（相同分组号）因此后续使用三种不同的rank都一样
+               ) 
+    
+        )
+    group by user_id, flag
+    having count(flag) >= 3
 """).show()
 end = time.time()
-print(f"SQL耗时：{round((end-start), 2)}")
+print(f"SQL耗时：{round((end-start), 3)}")
 
-''' 结论
-还是spark的SQL风格更快 估计还是受UDAF并行度的限制
-- 先从表中查数据+DSL风格：8.82s
-- 直接DSL风格：4.56s
-- 先从表中查数据+再创建视图+SQL：8.82-4.56+2.53=6.79s
-- hive元数据+sql风格：2.24s
-- sparksql console：2.76s
-- hivesql console (mapreduce): 56.56s
+''' 结论 
+DSL-mine的算法复杂度O(n) SQL的算法复杂度O(n)  尽管算法设计的更好，但DSL没有SQL来得快
+- 先从表中查数据+DSL-mine：4.654s
+- 直接DSL-mine：1.152s
+- 直接DSL-standard：3.017s
+- 先从表中查数据+再创建视图+SQL：4.654-1.152+0.478=3.98s
+- hive元数据+sql风格：0.547s
+- sparksql console：2.657s
+- hivesql console (mapreduce): 43.625s
+- bin/spark-sql -f 2.sql: 5.17s
 '''
