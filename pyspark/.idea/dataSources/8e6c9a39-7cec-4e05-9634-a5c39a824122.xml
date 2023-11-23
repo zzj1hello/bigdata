@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <dataSource name="hive">
   <database-model serializer="dbm" dbms="HIVE" family-id="HIVE" format-version="4.49">
-    <root id="1">
-      <ServerVersion>3.1.3</ServerVersion>
-    </root>
+    <root id="1"/>
     <routine id="2" parent="1" name="abs">
       <AutoCreated>1</AutoCreated>
       <ClassName>org.apache.hadoop.hive.ql.udf.generic.GenericUDFAbs</ClassName>

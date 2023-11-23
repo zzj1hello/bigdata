@@ -8,8 +8,9 @@ from(
       from (
                select user_id
                     , create_date
-               from sql_practice.order_info -- sql_practice.
-               group by user_id, create_date -- groupby会自动去重（相同分组号）因此后续使用三种不同的rank都一样
+               from sql_practice.order_info
+               -- groupby会根据返回的列自动去重（相同分组号）因此后续使用三种不同的rank都一样
+               group by user_id, create_date
            )
 
     )

@@ -126,6 +126,10 @@ local作为本地测试，standalone生产环境也不用，生产环境主要�
 
 - Driver角色运行在**YARN容器内**或**提交任务的客户端进程**（对应两种运行模式）YARN本身的ApplicationMaster依然存在，没有代替Spark的Driver
 
+  > 1. AM用来和其他角色通信询问需要/有多少资源
+  > 2. 监听任务进展、启停Executor进程
+  > 3. 容错：当出现故障或任务失败时，它会重新分配任务或请求更多的资源，以确保应用程序的正常执行。
+
 - 真正干活的Executor运行在YARN容器内
 
 - Spark只管**任务运行**层面（运行到YARN的容器内部），不管**资源管理**（全给YARN管了，集群管家和单机管家），只剩Driver和Executor
@@ -166,7 +170,7 @@ local作为本地测试，standalone生产环境也不用，生产环境主要�
 
   <img src="assets/image-20230406222954101.png" alt="image-20230406222954101" style="zoom: 80%;" />
 
-  - 提交任务的详细流程（客户端->RM->NM上的AM和Driver->RM->NM的Executor->NM上的Driver）
+  - 提交任务的详细流程（客户端->RM->NM上的AM->AM启动相同NM上的Driver->RM->NM的Executor->NM上的Driver）
 
     ![image-20230406224905484](assets/image-20230406224905484.png)
 
@@ -342,6 +346,7 @@ spark实现wordcount流程及其API
 
 - 大多数的算子是需要将处理结果交给Driver进行结束（非RDD的）
 - 用的是一份代码，给一个Driver和不同机器上的不同Executor执行RDD代码，每个Executor处理HDFS中的一段数据
+- Driver启动后开始任务调度（分配Executor）
 
 ![image-20231006182532946](assets/image-20231006182532946.png)
 
@@ -706,7 +711,7 @@ shuffle过程中，才走的网络的IO，而且如果执行不同Task的线程�
 
 - 充分利用集群资源，并**减少每个Task要处理的数据量**
 - 由于阶段划分，Task数量要多于并行度，多余CPU总核心数保证**快完成的任务能投入到新的Task**
-- 太少了CPU空闲、资源浪费；太多了Spark**调度困难**
+- 太少了，CPU空闲、资源浪费；太多了，Spark**调度困难**
 
 ### 任务调度
 
@@ -715,8 +720,18 @@ shuffle过程中，才走的网络的IO，而且如果执行不同Task的线程�
 DAG scheduler调度器：逻辑DAG的产生--->带有分区关系的DAG--->逻辑Task分配
 
 - **分解DAG，得到逻辑Task分配**：根据代码逻辑DAG、并行度，得到带有分区关系的DAG和Task，再根据要交互的Task关系和Executor数......**规划Task在哪个Executor的哪个线程运行**
+
 - Executor数一般设置为节点数，一个节点开一个Executor，从而提升并行性能
-  - 一个节点多个Executor进程，进程间的通信没法走内存，而是走本地回环网络（不是走交换机的网络），还是会比较慢
+  - 一个节点多个Executor进程，进程间的通信没法走内存，而是走本地回环网络（不是走交换机的网络），还是会比较慢。仍然需要通过操作系统提供的网络协议栈来完成通信。进程间通信的数据通过网络套接字（socket，见网络io模型）或**共享内存**等机制进行传输。
+  
+  - 同一Executor进程的Task线程通信，使用**共享内存**，直接访问到数据的内存地址
+  
+    > 共享内存
+    >
+    > - 共享内存是一种在同一台计算机上的进程间进行通信的机制，它通过共享一块内存区域来传递数据。
+    >
+    > - 在共享内存通信中，进程可以将数据写入共享内存区域，其他进程可以直接从该内存区域读取数据。这样可以实现高效的数据传输，因为进程直接访问共享内存，无需通过操作系统的网络协议栈。
+    > - 共享内存通信通常需要使用同步机制，如锁和信号量，以确保多个进程之间对共享数据的安全访问。这是因为多个进程同时访问共享内存可能导致竞态条件和数据一致性问题。
 
 Task scheduler调度器：--->将Task分配给指定的Executor并监控其工作
 
@@ -933,7 +948,7 @@ Catalyst的优化过程 （3,4是主要的两个优化方法）
 > 2. 基于catalyst优化器优化SparkSQL代码为RDD代码，包括
 >    1. 基于SparkSQL代码生成AST
 >    2. 标记AST元数据，便于优化和物理计划生成
->    3. 基于谓词下推和列值裁剪等优化方法，将不需要的行和列在读入内存和join之前过滤掉
+>    3. 基于谓词下推和列值裁剪等优化方法，**将不需要的行和列在读入内存和join之前过滤掉**
 >    4. 将最终的AST转化为物理执行计划
 >    5. 将执行计划转化为RDD代码
 > 3. 基于SparkSession创建Driver执行环境入口
@@ -1011,7 +1026,7 @@ SparkOnHive：借助Hive的metastore，不用再基于DF创建视图，可以直
 
 2. AQE
 
-   - 开启AQE`spark.sql.adaptive.enabled=true`，自动进行**动态合并shuffle分区，处理数据倾斜；小表join自动转广播join策略；shufflejoin中的动态增加分区，处理数据倾斜**
+   - 开启AQE`spark.sql.adaptive.enabled=true`，自动进行**动态合并shuffle分区（减少分区），处理数据倾斜；小表join自动转广播join策略；shufflejoin中的动态增加分区，处理数据倾斜**
 
    - 包含了 `set spark.sql.autoBroadcastJoinThreshold`;大表 JOIN 小表，小表做广播的阈值（默认10Mb，表示小表的大小）
 
@@ -1029,14 +1044,16 @@ SparkOnHive：借助Hive的metastore，不用再基于DF创建视图，可以直
 
 3. executor能力
 
-   ```shell
-   set spark.executor.memory; // executor用于缓存数据、代码执行的堆内存以及JVM运行时需要的内存
-   set spark.yarn.executor.memoryOverhead; //Spark运行还需要一些堆外内存，直接向系统申请，如数据传输时的netty等。
-   set spark.sql.windowExec.buffer.spill.threshold; //当用户的SQL中包含窗口函数时，并不会把一个窗口中的所有数据全部读进内存，而是维护一个缓存池，当池中的数据条数大于该参数表示的阈值时，spark将数据写到磁盘
-   set spark.executor.cores; //单个executor上可以同时运行的task数
-   ```
+   - `set spark.executor.memory;`  executor用于缓存数据、代码执行的堆内存以及JVM运行时需要的内存
+   - `set spark.yarn.executor.memoryOverhead;`  Spark运行还需要一些堆外内存，直接向系统申请，如数据传输时的netty等。
+   - `set spark.sql.windowExec.buffer.spill.threshold; `
+     - 当窗口操作的中间状态数据超过该阈值时，Spark 会将部分数据溢写到磁盘，以释放内存空间。溢出到磁盘的数据将以临时文件的形式存储，并在需要时进行读取
+     - 当用户的SQL中包含窗口函数时，并不会把一个窗口中的所有数据全部读进**内存**，而是维护一个**缓存池**，当池中的数据条数大于该参数表示的阈值时，spark将数据写到**磁盘**，并在需要时进行读取，以释放内存空间
+   - `set spark.executor.cores;` 单个executor上可以同时运行的task数
 
-   
+4. **算法造成递归调用深度过大 java.lang.StackOverflowError **
+
+   提交时设置`-conf spark.driver.extraJavaOptions=-Xss4m` 增加JVM堆栈内存
 
 ## Shuffle
 

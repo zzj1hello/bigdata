@@ -67,7 +67,7 @@ def group_agg(itr):
 # pyspark 无论什么ide都没法在rdd的自定义函数里头debug 可以采样先试试函数能不能行
 # lst = order_info_rdd.take(20)
 # print(group_agg(lst))
-# print(order_info_rdd.mapPartitions(group_agg).collect())
+print(order_info_rdd.mapPartitions(group_agg).collect())
 
 end = time.time()
 print(f"DSL-mine耗时：{round((end-start), 3)}")
@@ -115,5 +115,5 @@ DSL-mine的算法复杂度O(n) SQL的算法复杂度O(n)  尽管算法设计的�
 - hive元数据+sql风格：0.547s
 - sparksql console：2.657s
 - hivesql console (mapreduce): 43.625s
-- bin/spark-sql -f 2.sql: 5.17s
+- bin/spark-sql -f 3-2.sql: 5.17s
 '''
