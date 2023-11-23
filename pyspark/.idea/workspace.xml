@@ -4,6 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
+<<<<<<< Updated upstream
     <list default="true" id="41a54a61-b88c-4d74-9364-eb2e3abc48e0" name="Changes" comment="">
       <change afterPath="$PROJECT_DIR$/sql_practice/2-1.sql" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/sql_practice/2-2.sql" afterDir="false" />
@@ -22,6 +23,9 @@
       <change beforePath="$PROJECT_DIR$/sql_practice/dsl_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/sql_practice/dsl_3-2.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../语言基础.md" beforeDir="false" afterPath="$PROJECT_DIR$/../语言基础.md" afterDir="false" />
     </list>
+=======
+    <list default="true" id="41a54a61-b88c-4d74-9364-eb2e3abc48e0" name="Changes" comment="" />
+>>>>>>> Stashed changes
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -69,7 +73,11 @@
     ]
   }
 }</component>
+<<<<<<< Updated upstream
   <component name="RunManager" selected="Python.dsl_2-4">
+=======
+  <component name="RunManager" selected="Python.dsl_2">
+>>>>>>> Stashed changes
     <configuration name="DF-UDF" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="pyspark" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -245,10 +253,15 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/pyspark$DF_UDF.coverage" NAME="DF-UDF Coverage Results" MODIFIED="1699517412743" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+<<<<<<< Updated upstream
     <SUITE FILE_PATH="coverage/pyspark$dsl_2_4.coverage" NAME="dsl_2-4 Coverage Results" MODIFIED="1700109227349" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/sql_practice" />
     <SUITE FILE_PATH="coverage/pyspark$wordcount.coverage" NAME="wordcount Coverage Results" MODIFIED="1699083401923" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/pyspark$dsl_2.coverage" NAME="dsl_2 Coverage Results" MODIFIED="1699694698411" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/sql_practice" />
+=======
+>>>>>>> Stashed changes
     <SUITE FILE_PATH="coverage/pyspark$sparkonhive.coverage" NAME="sparkonhive Coverage Results" MODIFIED="1699083635440" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/pyspark$dsl_1.coverage" NAME="dsl_1 Coverage Results" MODIFIED="1699619353776" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/sql_practice" />
+    <SUITE FILE_PATH="coverage/pyspark$dsl_2.coverage" NAME="dsl_2 Coverage Results" MODIFIED="1699694698411" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/sql_practice" />
+    <SUITE FILE_PATH="coverage/pyspark$dsl_1.coverage" NAME="dsl_1 Coverage Results" MODIFIED="1699617270127" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/sql_practice" />
+    <SUITE FILE_PATH="coverage/pyspark$wordcount.coverage" NAME="wordcount Coverage Results" MODIFIED="1699083401923" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
